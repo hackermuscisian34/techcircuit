@@ -1,28 +1,24 @@
 import os
 import sys
 import json
-import time
 import hashlib
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
 from app.db.session import init_db, SessionLocal
-from app.db.models import Rule, Rulebook, Fact, ContentSubmission, AuditEvent
-from app.core.compiler import RuleCompiler
-from app.core.deterministic import DeterministicEngine
-from app.core.intent_lock import IntentLockEngine
-from app.core.claim_ledger import ClaimLedger
+from app.db.models import Rule, Rulebook, Fact, AuditEvent
+from app.core.deterministic import check_terminology_rules, check_trademark_compliance
 from app.core.citation import CitationVerifier
-from app.core.audit_chain import AuditChain
-from app.seed.synthetic_brand import seed_synthetic_brand
+from app.core.intent_lock import SurgicalPatchEngine
+from app.seed.synthetic_brand import seed_database
 
 import gradio as gr
 
 init_db()
 db = SessionLocal()
 if db.query(Rule).count() == 0:
-    seed_synthetic_brand(db)
+    seed_database(db=db, is_test=True)
 db.close()
 
 def run_fidelis_review(draft_text: str):
@@ -31,41 +27,60 @@ def run_fidelis_review(draft_text: str):
     
     db = SessionLocal()
     try:
-        active_rulebook = db.query(Rulebook).filter(Rulebook.version == "v2.4").first()
-        active_rules = db.query(Rule).filter(Rule.status == "ACTIVE").all() if active_rulebook else []
-        active_facts = db.query(Fact).all()
+        active_rulebook = db.query(Rulebook).filter(Rulebook.status == "ACTIVE").first()
+        active_rules = db.query(Rule).filter(Rule.rulebook_id == active_rulebook.id).all() if active_rulebook else db.query(Rule).filter(Rule.status == "ACTIVE").all()
+        
+        rule_dicts = [{
+            "id": r.id,
+            "rule_code": r.rule_code,
+            "category": r.category,
+            "severity": r.severity,
+            "enforcement_type": r.enforcement_type,
+            "source_quote": r.source_quote,
+            "source_section": r.source_section,
+            "description": r.description,
+            "pass_example": r.pass_example,
+            "fail_example": r.fail_example
+        } for r in active_rules]
 
-        det_findings = DeterministicEngine.evaluate_content(
-            content_text=draft_text,
-            rules=active_rules,
-            facts=active_facts
-        )
+        candidate_findings = check_terminology_rules(draft_text, rule_dicts)
+        
+        tm_findings = check_trademark_compliance(draft_text)
+        for tf in tm_findings:
+            r_ent = next((r for r in active_rules if r.rule_code == tf["rule_code"]), None)
+            candidate_findings.append({
+                "rule_id": r_ent.id if r_ent else None,
+                "rule_code": tf["rule_code"],
+                "category": "Brand Naming & Trademarks",
+                "severity": r_ent.severity if r_ent else "WARNING",
+                "span_start": tf["span_start"],
+                "span_end": tf["span_end"],
+                "matched_text": tf["brand_name"],
+                "source_quote": r_ent.source_quote if r_ent else "Official Trademark Nomenclature",
+                "source_section": r_ent.source_section if r_ent else "Section 2.4 (Page 7)",
+                "explanation": tf["explanation"],
+                "evidence_status": "VERIFIED",
+                "confidence_tier": "DETERMINISTIC",
+                "suggested_correction": tf["suggested_correction"]
+            })
 
-        claim_eval = ClaimLedger.evaluate_claims(
-            content_text=draft_text,
-            extracted_claims=[],
-            facts=active_facts
-        )
+        verifier = CitationVerifier(db)
+        rulebook_id = active_rulebook.id if active_rulebook else ""
+        verified_findings = verifier.verify_all(candidate_findings, rulebook_id, draft_text)
 
-        all_findings = det_findings + claim_eval["unsubstantiated_findings"]
-        verified_findings = CitationVerifier.verify_findings(all_findings, active_rules)
+        patch_result = SurgicalPatchEngine.patch_source(draft_text, verified_findings)
+        suggested_text = patch_result.get("suggested_text", draft_text)
 
-        intent_result = IntentLockEngine.generate_minimal_suggestions(
-            original_text=draft_text,
-            findings=verified_findings
-        )
-
-        suggested_text = intent_result.get("suggested_text", draft_text)
         content_hash = hashlib.sha256(draft_text.encode("utf-8")).hexdigest()
 
         findings_report = []
         for f in verified_findings:
             sev = f.get("severity", "WARNING")
             code = f.get("rule_code", "UNKNOWN")
-            msg = f.get("message", "")
+            exp = f.get("explanation", "")
             quote = f.get("source_quote", "N/A")
             sec = f.get("source_section", "")
-            findings_report.append(f"[{sev}] Rule {code}: {msg}\n  → Citation: \"{quote}\" ({sec})\n")
+            findings_report.append(f"[{sev}] Rule {code}: {exp}\n  → Citation: \"{quote}\" ({sec})\n")
 
         report_str = "\n".join(findings_report) if findings_report else "✓ No violations found! Content complies 100% with brand guidelines."
 
@@ -90,7 +105,7 @@ def list_active_rules():
         output = []
         for r in rules:
             output.append(f"### {r.rule_code}: {r.title} ({r.severity})\n- **Category**: {r.category}\n- **Requirement**: {r.description}\n- **Verbatim Citation**: *\"{r.source_quote}\"* ({r.source_section})\n")
-        return "\n".join(output)
+        return "\n".join(output) if output else "No rules found."
     finally:
         db.close()
 
@@ -107,23 +122,24 @@ def list_active_facts():
                 is_stale = vu < now
             status = "⚠️ STALE / EXPIRED" if is_stale else "✓ CERTIFIED ACTIVE"
             output.append(f"### {f.fact_code}: {f.subject} [{status}]\n- **Approved Statement**: {f.approved_statement}\n- **Certified Metric**: {f.normalized_value} {f.normalized_unit or ''}\n- **Source Document**: {f.source_document}\n- **Valid Until**: {f.valid_until.isoformat() if f.valid_until else 'No Expiration'}\n")
-        return "\n".join(output)
+        return "\n".join(output) if output else "No facts found."
     finally:
         db.close()
 
 def list_audit_trail():
     db = SessionLocal()
     try:
-        events = db.query(AuditEvent).order_by(AuditEvent.timestamp.desc()).limit(15).all()
+        events = db.query(AuditEvent).order_by(AuditEvent.sequence_number.desc()).limit(15).all()
         output = []
         for e in events:
-            output.append(f"- **Block #{e.sequence_id}** [{e.timestamp.strftime('%Y-%m-%d %H:%M:%S')}]: `{e.event_type}`\n  Hash: `{e.current_hash[:16]}...` (Prev: `{e.previous_hash[:16]}...`)")
+            ts = e.created_at.strftime("%Y-%m-%d %H:%M:%S") if e.created_at else e.timestamp_str
+            output.append(f"- **Block #{e.sequence_number}** [{ts}]: `{e.event_type}`\n  Hash: `{e.current_event_hash[:16]}...` (Prev: `{e.prev_event_hash[:16]}...`)")
         return "\n".join(output) if output else "Audit chain initialized with genesis block."
     finally:
         db.close()
 
 PRESET_SAMPLE_1 = "Introducing the brand new Apex Cloud platform! We deliver 100% uptime guaranteed for all enterprise teams, trusted by over 100,000 customers globally."
-PRESET_SAMPLE_2 = "Deploy with Apex Core today. Built on certified cloud architecture with verified 99.99% availability."
+PRESET_SAMPLE_2 = "Deploy with Apex Core today. Built on certified cloud architecture with verified 99.98% availability."
 
 custom_css = """
 footer {visibility: hidden}

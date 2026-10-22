@@ -41,26 +41,28 @@ def seed_database(db: Session=None, is_test: bool=False):
         db.query(User).filter(~User.id.in_(allowed_user_ids)).delete(synchronize_session=False)
         db.flush()
         if is_test:
-            rb = Rulebook(id='rb-apexdynamics-v1', workspace_id=WORKSPACE_ID, version='1.0.0', title='ApexDynamics Brand Guard', description='Test rulebook', status='ACTIVE')
-            db.add(rb)
-            db.flush()
-            for r_data in DEMO_RULES:
-                r = Rule(rulebook_id=rb.id, rule_code=r_data['rule_code'], title=r_data['title'], category=r_data['category'], description=r_data['description'], source_quote=r_data['source_quote'], source_section=r_data.get('source_section', 'Guidelines'), severity=r_data['severity'], enforcement_type=r_data.get('enforcement_type', 'DETERMINISTIC'), pass_example=r_data.get('pass_example'), fail_example=r_data.get('fail_example'), ambiguity_status='CLEAR', status='ACTIVE')
-                db.add(r)
+            rb = db.query(Rulebook).filter(Rulebook.id == 'rb-apexdynamics-v1').first()
+            if not rb:
+                rb = Rulebook(id='rb-apexdynamics-v1', workspace_id=WORKSPACE_ID, version='1.0.0', title='ApexDynamics Brand Guard', description='Test rulebook', status='ACTIVE')
+                db.add(rb)
                 db.flush()
-                for tc in r_data.get('test_cases', []):
-                    db.add(RuleTestCase(rule_id=r.id, input_text=tc['input_text'], expected_verdict=tc['expected_verdict'], rationale=tc['rationale']))
-            for f_data in DEMO_FACTS:
-                db.add(Fact(workspace_id=WORKSPACE_ID, fact_code=f_data['fact_code'], subject=f_data['subject'], approved_statement=f_data['approved_statement'], normalized_value=f_data.get('normalized_value'), normalized_unit=f_data.get('normalized_unit'), source_document=f_data['source_document'], source_quote=f_data['source_quote'], owner_name=f_data['owner_name'], owner_email=f_data['owner_email'], valid_from=f_data['valid_from'], valid_until=f_data['valid_until'], status=f_data['status']))
-            db.flush()
-            import json
-            now = datetime.now(timezone.utc)
-            genesis_payload = {'action': 'GENESIS_BLOCK_INITIALIZED', 'workspace': WORKSPACE_ID, 'version': '1.0.0'}
-            p_hash = calculate_sha256(json.dumps(genesis_payload, sort_keys=True, separators=(',', ':')))
-            t_iso = now.isoformat()
-            c_hash = calculate_event_hash(GENESIS_PREV_HASH, 'usr-admin-01', 'GENESIS_INITIALIZATION', p_hash, t_iso)
-            db.add(AuditEvent(workspace_id=WORKSPACE_ID, sequence_number=1, event_type='GENESIS_INITIALIZATION', actor_id='usr-admin-01', actor_role='ADMIN', payload_hash=p_hash, prev_event_hash=GENESIS_PREV_HASH, current_event_hash=c_hash, timestamp_str=t_iso, details=genesis_payload, created_at=now))
-            db.flush()
+                for r_data in DEMO_RULES:
+                    r = Rule(rulebook_id=rb.id, rule_code=r_data['rule_code'], title=r_data['title'], category=r_data['category'], description=r_data['description'], source_quote=r_data['source_quote'], source_section=r_data.get('source_section', 'Guidelines'), severity=r_data['severity'], enforcement_type=r_data.get('enforcement_type', 'DETERMINISTIC'), pass_example=r_data.get('pass_example'), fail_example=r_data.get('fail_example'), ambiguity_status='CLEAR', status='ACTIVE')
+                    db.add(r)
+                    db.flush()
+                    for tc in r_data.get('test_cases', []):
+                        db.add(RuleTestCase(rule_id=r.id, input_text=tc['input_text'], expected_verdict=tc['expected_verdict'], rationale=tc['rationale']))
+                for f_data in DEMO_FACTS:
+                    db.add(Fact(workspace_id=WORKSPACE_ID, fact_code=f_data['fact_code'], subject=f_data['subject'], approved_statement=f_data['approved_statement'], normalized_value=f_data.get('normalized_value'), normalized_unit=f_data.get('normalized_unit'), source_document=f_data['source_document'], source_quote=f_data['source_quote'], owner_name=f_data['owner_name'], owner_email=f_data['owner_email'], valid_from=f_data['valid_from'], valid_until=f_data['valid_until'], status=f_data['status']))
+                db.flush()
+                import json
+                now = datetime.now(timezone.utc)
+                genesis_payload = {'action': 'GENESIS_BLOCK_INITIALIZED', 'workspace': WORKSPACE_ID, 'version': '1.0.0'}
+                p_hash = calculate_sha256(json.dumps(genesis_payload, sort_keys=True, separators=(',', ':')))
+                t_iso = now.isoformat()
+                c_hash = calculate_event_hash(GENESIS_PREV_HASH, 'usr-admin-01', 'GENESIS_INITIALIZATION', p_hash, t_iso)
+                db.add(AuditEvent(workspace_id=WORKSPACE_ID, sequence_number=1, event_type='GENESIS_INITIALIZATION', actor_id='usr-admin-01', actor_role='ADMIN', payload_hash=p_hash, prev_event_hash=GENESIS_PREV_HASH, current_event_hash=c_hash, timestamp_str=t_iso, details=genesis_payload, created_at=now))
+                db.flush()
         db.commit()
     except Exception as e:
         db.rollback()
@@ -68,5 +70,10 @@ def seed_database(db: Session=None, is_test: bool=False):
     finally:
         if close_db:
             db.close()
+
+def seed_synthetic_brand(db: Session=None):
+    return seed_database(db=db, is_test=True)
+
 if __name__ == '__main__':
     seed_database()
+
