@@ -1,0 +1,12 @@
+AURORA LABS VISUAL ASSET STANDARDS
+
+Brand Color Palette:
+- Primary Orange: #F97316 (Primary buttons, accents, icons)
+- Deep Orange: #C2410C (Headings, active states)
+- Warm Background: #FFFAF5 (Page canvas, containers)
+- Dark Ink: #21160F (Body text, contrast ratio > 7:1)
+
+Logo Specifications:
+- Master Mark Aspect Ratio: 1:1 (Square icon) or 3:1 (Horizontal wordmark)
+- Clear Space Margin: Minimum 24px padding on all sides
+- Prohibited Modifications: Stretching, squishing, altering opacity, applying drop shadows

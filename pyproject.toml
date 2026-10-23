@@ -1,0 +1,22 @@
+[tool.pyrefly]
+search-path = [
+    "backend"
+]
+python-interpreter-path = "backend/.venv/Scripts/python.exe"
+project-includes = [
+    "backend"
+]
+project-excludes = [
+    "backend/.venv",
+    "**/__pycache__"
+]
+
+[tool.pyright]
+include = ["backend"]
+extraPaths = ["backend"]
+executionEnvironments = [
+  { root = "backend", extraPaths = ["."] }
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]

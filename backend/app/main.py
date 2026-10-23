@@ -13,7 +13,7 @@ from app.api.v1.audit import router as audit_router
 from app.api.v1.assets import router as assets_router
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION, description="CANON: Open-Source Brand Governance Compiler. Transforms brand guidelines into versioned, testable rules, evaluates promotional claims against certified evidence, enforces 'No Citation, No Blocking Flag', and maintains tamper-evident audit receipts.", openapi_url=f'{settings.API_V1_STR}/openapi.json', docs_url=f'{settings.API_V1_STR}/docs')
-app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:8000', 'http://127.0.0.1:8000'], allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], allow_headers=['*'])
+app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS, allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], allow_headers=['*'])
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(rulebooks_router, prefix=settings.API_V1_STR)
 app.include_router(facts_router, prefix=settings.API_V1_STR)
@@ -32,7 +32,18 @@ def on_startup():
 
 @app.get('/health', tags=['Health'])
 def health_check():
-    return {'status': 'healthy', 'version': settings.VERSION, 'database': 'connected', 'ollama_model': settings.OLLAMA_MODEL, 'default_workspace': settings.DEFAULT_WORKSPACE_ID}
+    active_model = settings.HF_MODEL if (settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') else settings.OLLAMA_MODEL
+    active_provider = 'huggingface' if (settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') else ('ollama' if settings.LLM_PROVIDER == 'ollama' else 'auto')
+    return {
+        'status': 'healthy',
+        'version': settings.VERSION,
+        'database': 'connected',
+        'llm_provider': active_provider,
+        'llm_model': active_model,
+        'llm_region': settings.HF_REGION,
+        'ollama_model': settings.OLLAMA_MODEL,
+        'default_workspace': settings.DEFAULT_WORKSPACE_ID
+    }
 
 @app.get('/', tags=['Root'])
 def root():

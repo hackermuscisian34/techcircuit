@@ -15,6 +15,9 @@ Executes the full end-to-end hackathon judge scenario against the live FastAPI a
 import sys
 import os
 import io
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+
 from PIL import Image
 import httpx
 

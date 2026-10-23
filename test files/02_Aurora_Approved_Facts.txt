@@ -1,0 +1,24 @@
+AURORA DESK APPROVED FACTS SHEET (Fact Vault Fixture)
+
+FACT-001 | Subject: Workspace Coordination
+Approved statement: Aurora Desk supports team workspaces for project coordination.
+Source: Product brief v1.4 | Approved | Valid until: 2027-06-30
+
+FACT-002 | Subject: Standard Plan Pricing
+Approved statement: The standard plan costs $12 per user per month when billed monthly.
+Certified value: 12 | Unit: $/user/month
+Source: Pricing sheet PR-2026-04 | Approved | Valid until: 2026-12-31
+
+FACT-003 | Subject: Onboarding Speed
+Approved statement: In an internal test, 24 participants completed the onboarding task in under 10 minutes.
+Certified value: 10 | Unit: minutes
+Source: Usability report UX-24 | Approved with context | Valid until: 2027-01-31
+
+FACT-004 | Subject: Uptime & Availability
+Approved statement: Aurora Desk does not guarantee uninterrupted service. Target SLA availability is 99.9%.
+Source: Service statement SS-02 | Approved | Valid until: 2027-12-31
+
+FACT-005 | Subject: Company Headcount
+Approved statement: Aurora Labs has 18 employees as of 2026-09-01.
+Certified value: 18 | Unit: employees
+Source: People operations snapshot HR-2026-09 | Approved | Valid until: 2026-11-30

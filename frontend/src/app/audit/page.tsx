@@ -11,7 +11,7 @@ import {
   Check,
   Copy
 } from "lucide-react";
-import { api, AuditEvent, AuditVerificationResult } from "@/lib/api";
+import { api, AuditEvent, AuditVerificationResult } from "../../lib/api";
 
 const EVENT_TITLE_CATALOG: Record<string, string> = {
   APPROVAL_DECISION: "Human Approver Signed Off on Submission",
@@ -204,7 +204,7 @@ export default function AuditTrailPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
-                          {new Date(ev.created_at).toLocaleString()}
+                          {new Date(ev.created_at || ev.timestamp || Date.now()).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -216,11 +216,11 @@ export default function AuditTrailPage() {
                             Current Block Hash (SHA-256)
                           </span>
                           <button
-                            onClick={() => copyToClipboard(ev.current_event_hash)}
+                            onClick={() => copyToClipboard(ev.current_event_hash || ev.event_hash || "")}
                             className="text-[#8A7567] hover:text-[#C87539] p-0.5"
                             title="Copy hash"
                           >
-                            {activeCopiedHash === ev.current_event_hash ? (
+                            {activeCopiedHash === (ev.current_event_hash || ev.event_hash) ? (
                               <Check className="w-3 h-3 text-emerald-600" />
                             ) : (
                               <Copy className="w-3 h-3" />
@@ -228,7 +228,7 @@ export default function AuditTrailPage() {
                           </button>
                         </div>
                         <span className="text-[#C87539] font-bold truncate block">
-                          {ev.current_event_hash}
+                          {ev.current_event_hash || ev.event_hash}
                         </span>
                       </div>
 
@@ -237,7 +237,7 @@ export default function AuditTrailPage() {
                           Previous Block Link
                         </span>
                         <span className="text-[#8A7567] truncate block">
-                          {ev.prev_event_hash}
+                          {ev.prev_event_hash || ev.previous_hash}
                         </span>
                       </div>
                     </div>

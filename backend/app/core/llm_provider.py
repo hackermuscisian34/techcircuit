@@ -45,48 +45,155 @@ class HeuristicFallbackResolver:
                 return producer(normalized)
         return {'status': 'processed', 'findings': []}
 
+def clean_json_response(raw_fragment: str) -> Any:
+    text = raw_fragment.strip()
+    if text.startswith('```'):
+        lines = text.splitlines()
+        if lines[0].startswith('```'):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith('```'):
+            lines = lines[:-1]
+        text = '\n'.join(lines).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        dict_start = text.find('{')
+        list_start = text.find('[')
+        candidates = []
+        if dict_start != -1:
+            dict_end = text.rfind('}')
+            if dict_end > dict_start:
+                candidates.append((dict_start, text[dict_start:dict_end + 1]))
+        if list_start != -1:
+            list_end = text.rfind(']')
+            if list_end > list_start:
+                candidates.append((list_start, text[list_start:list_end + 1]))
+        if candidates:
+            candidates.sort(key=lambda x: x[0])
+            for _, snippet in candidates:
+                try:
+                    return json.loads(snippet)
+                except Exception:
+                    continue
+        raise
+
 class LLMProvider:
 
     def __init__(self):
-        self.base_url = settings.OLLAMA_BASE_URL
-        self.model = settings.OLLAMA_MODEL
-        self.timeout = settings.OLLAMA_TIMEOUT_SECONDS
+        self.provider = settings.LLM_PROVIDER
+        self.hf_token = settings.effective_hf_token
+        self.hf_model = settings.HF_MODEL
+        self.hf_region = settings.HF_REGION
+        self.hf_endpoint_url = settings.HF_ENDPOINT_URL
+        self.hf_timeout = settings.HF_TIMEOUT_SECONDS
+        self.ollama_base_url = settings.OLLAMA_BASE_URL
+        self.ollama_model = settings.OLLAMA_MODEL
+        self.ollama_timeout = settings.OLLAMA_TIMEOUT_SECONDS
+
+    async def _generate_huggingface(self, fortified_instruction: str, user_prompt: str, t_zero: float) -> Dict[str, Any]:
+        from huggingface_hub import AsyncInferenceClient
+        headers = {}
+        if self.hf_region and self.hf_region != 'auto':
+            headers['X-Region'] = self.hf_region
+
+        client = AsyncInferenceClient(
+            model=self.hf_model if not self.hf_endpoint_url else None,
+            base_url=self.hf_endpoint_url,
+            token=self.hf_token,
+            timeout=self.hf_timeout,
+            headers=headers if headers else None,
+        )
+        chat_res = await client.chat.completions.create(
+            messages=[
+                {'role': 'system', 'content': fortified_instruction},
+                {'role': 'user', 'content': user_prompt}
+            ],
+            max_tokens=1024,
+            temperature=0.1
+        )
+        raw_txt = chat_res.choices[0].message.content or '{}'
+        parsed_structure = clean_json_response(raw_txt)
+        elapsed = round((time.time() - t_zero) * 1000, 2)
+        return {
+            'result': parsed_structure,
+            'disclosure': {
+                'provider': 'Hugging Face Cloud Inference',
+                'model': self.hf_model,
+                'region': self.hf_region,
+                'latency_ms': elapsed,
+                'is_local': False,
+                'is_fallback': False,
+                'privacy_mode': 'Cloud Zero-Retention (Regional)',
+                'prompt_injection_screened': True
+            }
+        }
+
+    async def _generate_ollama(self, fortified_instruction: str, user_prompt: str, t_zero: float) -> Dict[str, Any]:
+        request_body = InferencePayloadFactory.assemble(self.ollama_model, fortified_instruction, user_prompt)
+        async with httpx.AsyncClient(timeout=self.ollama_timeout) as session:
+            transmission = await session.post(f'{self.ollama_base_url}/api/chat', json=request_body)
+            if transmission.status_code == 200:
+                envelope = transmission.json()
+                raw_fragment = envelope.get('message', {}).get('content', '{}')
+                parsed_structure = clean_json_response(raw_fragment)
+                elapsed = round((time.time() - t_zero) * 1000, 2)
+                return {
+                    'result': parsed_structure,
+                    'disclosure': {
+                        'provider': 'Local Ollama Inference',
+                        'model': self.ollama_model,
+                        'region': 'local',
+                        'latency_ms': elapsed,
+                        'is_local': True,
+                        'is_fallback': False,
+                        'privacy_mode': 'Zero Cloud Data Leakage (Local Only)',
+                        'prompt_injection_screened': True
+                    }
+                }
+            raise RuntimeError(f'Ollama returned status code {transmission.status_code}: {transmission.text}')
 
     async def generate_structured(self, system_prompt: str, user_prompt: str, json_schema: Optional[Dict[str, Any]]=None) -> Dict[str, Any]:
         t_zero = time.time()
         fortified_instruction = InferenceDefenseWrapper.wrap(system_prompt)
-        request_body = InferencePayloadFactory.assemble(self.model, fortified_instruction, user_prompt)
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as session:
-                transmission = await session.post(f'{self.base_url}/api/chat', json=request_body)
-                if transmission.status_code == 200:
-                    envelope = transmission.json()
-                    raw_fragment = envelope.get('message', {}).get('content', '{}')
-                    parsed_structure = json.loads(raw_fragment)
-                    elapsed = round((time.time() - t_zero) * 1000, 2)
-                    return {'result': parsed_structure, 'disclosure': {'provider': 'Local Ollama Inference', 'model': self.model, 'latency_ms': elapsed, 'is_local': True, 'is_fallback': False, 'privacy_mode': 'Zero Cloud Data Leakage (Local Only)', 'prompt_injection_screened': True}}
-        except Exception as err:
-            hf_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN')
-            if hf_token:
-                try:
-                    from huggingface_hub import InferenceClient
-                    client = InferenceClient(model='Qwen/Qwen2.5-1.5B-Instruct', token=hf_token, timeout=self.timeout)
-                    chat_res = client.chat.completions.create(
-                        messages=[{'role': 'system', 'content': fortified_instruction}, {'role': 'user', 'content': user_prompt}],
-                        max_tokens=512,
-                        temperature=0.1
-                    )
-                    raw_txt = chat_res.choices[0].message.content or '{}'
-                    if '{' in raw_txt and '}' in raw_txt:
-                        clean_json = raw_txt[raw_txt.find('{'):raw_txt.rfind('}') + 1]
-                        parsed_hf = json.loads(clean_json)
-                        elapsed = round((time.time() - t_zero) * 1000, 2)
-                        return {'result': parsed_hf, 'disclosure': {'provider': 'Hugging Face Cloud Inference', 'model': 'Qwen/Qwen2.5-1.5B-Instruct', 'latency_ms': elapsed, 'is_local': False, 'is_fallback': False, 'privacy_mode': 'Cloud Zero-Retention', 'prompt_injection_screened': True}}
-                except Exception:
-                    pass
-            if not settings.ALLOW_MOCK_LLM_FALLBACK:
-                raise RuntimeError(f'Ollama inference failed: {str(err)}')
-        elapsed = round((time.time() - t_zero) * 1000, 2)
-        synthesized_data = HeuristicFallbackResolver.synthesize(user_prompt)
-        return {'result': synthesized_data, 'disclosure': {'provider': 'Deterministic Rule Logic Engine (Offline Fallback)', 'model': 'rule-heuristic-v1', 'latency_ms': elapsed, 'is_local': True, 'is_fallback': True, 'privacy_mode': 'Local Offline Verified', 'prompt_injection_screened': True}}
+        last_error = None
+
+        # Determine whether to attempt Hugging Face cloud API
+        effective_token = settings.effective_hf_token or self.hf_token
+        should_try_hf = (self.provider == 'huggingface') or (self.provider == 'auto' and bool(effective_token))
+
+        if should_try_hf:
+            try:
+                return await self._generate_huggingface(fortified_instruction, user_prompt, t_zero)
+            except Exception as hf_err:
+                last_error = hf_err
+
+        # Try local Ollama if designated or as fallback in auto mode
+        should_try_ollama = (self.provider == 'ollama') or (self.provider == 'auto' and not should_try_hf) or (self.provider == 'auto' and should_try_hf)
+        if should_try_ollama:
+            try:
+                return await self._generate_ollama(fortified_instruction, user_prompt, t_zero)
+            except Exception as ollama_err:
+                last_error = last_error or ollama_err
+
+        # Fallback to deterministic heuristic resolver if permitted
+        if settings.ALLOW_MOCK_LLM_FALLBACK:
+            elapsed = round((time.time() - t_zero) * 1000, 2)
+            synthesized_data = HeuristicFallbackResolver.synthesize(user_prompt)
+            return {
+                'result': synthesized_data,
+                'disclosure': {
+                    'provider': 'Deterministic Rule Logic Engine (Offline Fallback)',
+                    'model': 'rule-heuristic-v1',
+                    'region': 'offline',
+                    'latency_ms': elapsed,
+                    'is_local': True,
+                    'is_fallback': True,
+                    'privacy_mode': 'Local Offline Verified',
+                    'prompt_injection_screened': True
+                }
+            }
+
+        raise RuntimeError(f'All LLM providers failed. Last encountered error: {str(last_error)}')
+
 llm_client = LLMProvider()
+

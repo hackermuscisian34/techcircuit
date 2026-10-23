@@ -1097,7 +1097,7 @@ export default function HomePage() {
                           </Link>
                         </div>
                         <p className="text-xs text-[#7C6A5E] leading-relaxed pl-5">
-                          Runs completely offline on local Ollama models (Qwen2.5) with sub-second deterministic pipelines. Zero confidential drafts transmitted to third-party cloud APIs.
+                          Runs with pre-trained open-source Qwen 2.5 on Hugging Face Serverless / Regional APIs for Render &amp; Vercel deployment, or 100% offline via local Ollama.
                         </p>
                       </div>
                     </>
@@ -1967,8 +1967,8 @@ export default function HomePage() {
                             exclusive: false
                           },
                           {
-                            name: "100% Air-Gapped Local Inference",
-                            sub: "Runs on local Ollama Qwen2.5; zero draft data sent to cloud LLM APIs",
+                            name: "Pre-Trained Open-Source Inference",
+                            sub: "Runs on pre-trained open-source Qwen 2.5 (Hugging Face / Local Ollama); zero third-party data retention",
                             fidelis: "✓ Zero Cloud Telemetry",
                             dasho: "✕ Cloud SaaS",
                             hypo: "✕ Cloud SaaS",

@@ -14,6 +14,9 @@ router = APIRouter(prefix='/approvals', tags=['Human Approval Workflow'])
 ALLOWED_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
 
 @router.get('/queue', response_model=List[ContentSubmissionResponse])
+@router.get('/queue/', response_model=List[ContentSubmissionResponse])
+@router.get('/submissions', response_model=List[ContentSubmissionResponse])
+@router.get('/submissions/', response_model=List[ContentSubmissionResponse])
 def get_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
     submissions = db.query(ContentSubmission).filter(ContentSubmission.workspace_id == current_user.workspace_id, ContentSubmission.current_status.in_(['SUBMITTED', 'CHANGES_REQUESTED'])).order_by(ContentSubmission.created_at.desc()).all()
     results = []
@@ -45,7 +48,26 @@ def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate
         findings = db.query(Finding).filter(Finding.content_version_id == latest_version.id).all()
         verified_count = sum((1 for f in findings if f.verification_status == 'VERIFIED'))
         advisory_count = sum((1 for f in findings if f.severity == 'ADVISORY'))
-        receipt = ReviewReceipt(submission_id=sub.id, content_version_id=latest_version.id, content_hash=latest_version.content_hash, rulebook_version=latest_version.rulebook_version, approver_id=approver.id, final_verdict=payload.decision, verified_findings_count=verified_count, advisory_count=advisory_count, model_disclosure={'provider': 'Local Ollama Inference', 'model': settings.OLLAMA_MODEL, 'local_only': True, 'prompt_injection_screened': True})
+        active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface')
+        active_provider = 'Hugging Face Cloud Inference' if active_is_hf else 'Local Ollama Inference'
+        active_model = settings.HF_MODEL if active_is_hf else settings.OLLAMA_MODEL
+        receipt = ReviewReceipt(
+            submission_id=sub.id,
+            content_version_id=latest_version.id,
+            content_hash=latest_version.content_hash,
+            rulebook_version=latest_version.rulebook_version,
+            approver_id=approver.id,
+            final_verdict=payload.decision,
+            verified_findings_count=verified_count,
+            advisory_count=advisory_count,
+            model_disclosure={
+                'provider': active_provider,
+                'model': active_model,
+                'region': settings.HF_REGION if active_is_hf else 'local',
+                'local_only': not active_is_hf,
+                'prompt_injection_screened': True
+            }
+        )
         db.add(receipt)
         db.flush()
     db.commit()

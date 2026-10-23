@@ -107,7 +107,7 @@ function AccessRestrictionNotice({ currentRole, userName, targetPath }: AccessRe
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {metadata?.requiredRoles.map((role) => (
+                  {(metadata?.requiredRoles ?? []).map((role) => (
                     <span
                       key={role}
                       className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-1 rounded-lg bg-white text-[#027A48] border border-[#A6F4C5] shadow-2xs"

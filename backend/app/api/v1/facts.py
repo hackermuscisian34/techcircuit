@@ -13,6 +13,7 @@ from app.config import settings
 router = APIRouter(prefix='/facts', tags=['Approved Fact Vault'])
 
 @router.get('', response_model=List[FactResponse])
+@router.get('/', response_model=List[FactResponse])
 def list_approved_facts(current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     now = datetime.now(timezone.utc)
     facts = db.query(Fact).filter(Fact.workspace_id == current_user.workspace_id).all()
@@ -42,6 +43,7 @@ async def extract_facts_from_document(file: Optional[UploadFile]=File(None), tex
     return {'source_document': doc_name, 'text_length': len(raw_text), 'candidate_facts_count': len(facts), 'candidate_facts': facts}
 
 @router.post('', response_model=FactResponse)
+@router.post('/', response_model=FactResponse)
 def create_approved_fact(payload: FactCreate, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     now = datetime.now(timezone.utc)
     workspace_id = current_user.workspace_id

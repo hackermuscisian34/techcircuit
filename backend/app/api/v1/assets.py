@@ -10,11 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc, asc
+from fastapi.security import HTTPAuthorizationCredentials
 from app.config import settings
 from app.db.session import get_db
 from app.db.models import BrandAsset, User, Workspace
 from app.schemas.domain import BrandAssetResponse, BrandAssetCreate, BrandAssetUpdate, BrandAssetApproval, BrandAssetStats, BrandColorCreate
-from app.core.security import get_current_user, require_roles
+from app.core.security import get_current_user, get_optional_current_user, require_roles, http_bearer
 from app.core.audit_chain import record_audit_event
 from app.core.parser import read_uploaded_file_safely, validate_file_signature
 from app.core.visual_audit import analyze_image_asset
@@ -22,6 +23,7 @@ from app.core.asset_storage import sanitize_filename, sanitize_svg, get_asset_st
 router = APIRouter(prefix='/assets', tags=['Brand Asset Management'])
 
 @router.get('', response_model=List[BrandAssetResponse])
+@router.get('/', response_model=List[BrandAssetResponse])
 def list_assets(category: Optional[str]=Query(None, description='Filter by category'), status: Optional[str]=Query(None, description='Filter by approval status'), search: Optional[str]=Query(None, description='Search by name or description'), sort: Optional[str]=Query('newest', description='Sort order: newest, oldest, name_asc, name_desc, updated'), current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     query = db.query(BrandAsset).filter(BrandAsset.workspace_id == current_user.workspace_id)
     if category and category.upper() != 'ALL':
@@ -60,6 +62,9 @@ def get_asset_stats(current_user: User=Depends(get_current_user), db: Session=De
     return BrandAssetStats(total_assets=total, approved_assets=approved, pending_approval=pending, archived_assets=archived, rejected_assets=rejected, categories_summary=cat_summary)
 
 @router.post('', response_model=BrandAssetResponse)
+@router.post('/', response_model=BrandAssetResponse)
+@router.post('/upload', response_model=BrandAssetResponse)
+@router.post('/upload/', response_model=BrandAssetResponse)
 async def upload_asset(name: str=Form(...), category: str=Form(...), description: Optional[str]=Form(None), intended_usage: Optional[str]=Form(None), version: Optional[str]=Form('1.0.0'), metadata_json: Optional[str]=Form(None), file: Optional[UploadFile]=File(None), current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     workspace_id = current_user.workspace_id
     cat_upper = category.upper().strip()
@@ -115,13 +120,16 @@ async def upload_asset(name: str=Form(...), category: str=Form(...), description
         dest_path = get_asset_storage_path(workspace_id, new_asset.id, clean_fn)
         with open(dest_path, 'wb') as f_out:
             f_out.write(file_bytes)
-        new_asset.file_path = str(dest_path.relative_to(settings.BASE_DIR))
+        setattr(new_asset, 'file_path', str(dest_path.relative_to(settings.BASE_DIR)))
         db.commit()
         db.refresh(new_asset)
     record_audit_event(db=db, workspace_id=workspace_id, event_type='ASSET_UPLOADED', actor_id=current_user.id, actor_role=current_user.role, details={'asset_id': new_asset.id, 'name': new_asset.name, 'category': new_asset.category, 'format': new_asset.file_format, 'status': new_asset.status})
     return new_asset
 
 @router.post('/color', response_model=BrandAssetResponse)
+@router.post('/color/', response_model=BrandAssetResponse)
+@router.post('/colors', response_model=BrandAssetResponse)
+@router.post('/colors/', response_model=BrandAssetResponse)
 def add_brand_color(payload: BrandColorCreate, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     hex_clean = payload.hex.strip()
     if not re.match('^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$', hex_clean):
@@ -149,18 +157,18 @@ def update_asset(asset_id: str, payload: BrandAssetUpdate, current_user: User=De
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
     if payload.name is not None:
-        asset.name = payload.name.strip()
+        setattr(asset, 'name', payload.name.strip())
     if payload.category is not None:
-        asset.category = payload.category.upper().strip()
+        setattr(asset, 'category', payload.category.upper().strip())
     if payload.description is not None:
-        asset.description = payload.description.strip()
+        setattr(asset, 'description', payload.description.strip())
     if payload.intended_usage is not None:
-        asset.intended_usage = payload.intended_usage.strip()
+        setattr(asset, 'intended_usage', payload.intended_usage.strip())
     if payload.version is not None:
-        asset.version = payload.version.strip()
+        setattr(asset, 'version', payload.version.strip())
     if payload.metadata_json is not None:
-        asset.metadata_json = payload.metadata_json
-    asset.updated_at = datetime.now(timezone.utc)
+        setattr(asset, 'metadata_json', payload.metadata_json)
+    setattr(asset, 'updated_at', datetime.now(timezone.utc))
     db.commit()
     db.refresh(asset)
     record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='ASSET_METADATA_UPDATED', actor_id=current_user.id, actor_role=current_user.role, details={'asset_id': asset.id, 'name': asset.name})
@@ -169,6 +177,7 @@ import hashlib
 ALLOWED_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
 
 @router.post('/{asset_id}/approval', response_model=BrandAssetResponse)
+@router.post('/{asset_id}/approve', response_model=BrandAssetResponse)
 def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
@@ -177,12 +186,12 @@ def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_us
     if decision_upper not in ['APPROVED', 'REJECTED']:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be either 'APPROVED' or 'REJECTED'.")
     now = datetime.now(timezone.utc)
-    asset.status = decision_upper
-    asset.approved_by_id = current_user.id
-    asset.approved_by_name = current_user.full_name
-    asset.approved_at = now
-    asset.rejection_reason = payload.reason if decision_upper == 'REJECTED' else None
-    asset.updated_at = now
+    setattr(asset, 'status', decision_upper)
+    setattr(asset, 'approved_by_id', current_user.id)
+    setattr(asset, 'approved_by_name', current_user.full_name)
+    setattr(asset, 'approved_at', now)
+    setattr(asset, 'rejection_reason', payload.reason if decision_upper == 'REJECTED' else None)
+    setattr(asset, 'updated_at', now)
     meta = dict(asset.metadata_json or {})
     if decision_upper == 'APPROVED':
         approval_hash = None
@@ -197,7 +206,7 @@ def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_us
         meta['receipt_id'] = f'RCPT-ASSET-{asset.id[:8].upper()}'
         meta['approved_by'] = current_user.full_name
         meta['approved_at'] = now.isoformat()
-    asset.metadata_json = meta
+    setattr(asset, 'metadata_json', meta)
     db.commit()
     db.refresh(asset)
     record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='ASSET_APPROVAL_DECISION', actor_id=current_user.id, actor_role=current_user.role, details={'asset_id': asset.id, 'decision': decision_upper, 'reason': payload.reason, 'approver': current_user.email, 'receipt_id': meta.get('receipt_id'), 'approval_hash': meta.get('approval_hash')})
@@ -208,8 +217,8 @@ def archive_asset(asset_id: str, current_user: User=Depends(get_current_user), d
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
-    asset.status = 'ARCHIVED'
-    asset.updated_at = datetime.now(timezone.utc)
+    setattr(asset, 'status', 'ARCHIVED')
+    setattr(asset, 'updated_at', datetime.now(timezone.utc))
     db.commit()
     db.refresh(asset)
     record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='ASSET_ARCHIVED', actor_id=current_user.id, actor_role=current_user.role, details={'asset_id': asset.id, 'name': asset.name})
@@ -233,28 +242,53 @@ def delete_asset(asset_id: str, current_user: User=Depends(require_roles('ADMIN'
     return {'detail': 'Brand asset successfully deleted.'}
 
 @router.get('/{asset_id}/download')
-def download_asset(asset_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
-    asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
+def download_asset(
+    asset_id: str,
+    token: Optional[str] = Query(None),
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db)
+):
+    current_user = get_optional_current_user(auth=auth, token=token, db=db)
+    query = db.query(BrandAsset).filter(BrandAsset.id == asset_id)
+    if current_user:
+        query = query.filter(BrandAsset.workspace_id == current_user.workspace_id)
+    asset = query.first()
     if not asset or not asset.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Asset file not found.')
-    full_path = Path(settings.BASE_DIR) / asset.file_path
+    full_path = Path(asset.file_path) if Path(asset.file_path).is_absolute() else Path(settings.BASE_DIR) / asset.file_path
     if not full_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Stored asset file is missing from disk.')
     media_type = asset.mime_type or 'application/octet-stream'
-    return FileResponse(path=str(full_path), filename=asset.file_name or f'{asset.name}.{asset.file_format.lower()}', media_type=media_type, content_disposition_type='attachment')
+    filename = asset.file_name or f"{asset.name}.{asset.file_format.lower()}"
+    return FileResponse(
+        path=str(full_path),
+        filename=filename,
+        media_type=media_type,
+        content_disposition_type='attachment'
+    )
 
 @router.get('/{asset_id}/preview')
-def preview_asset(asset_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
-    asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
+def preview_asset(
+    asset_id: str,
+    token: Optional[str] = Query(None),
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db)
+):
+    current_user = get_optional_current_user(auth=auth, token=token, db=db)
+    query = db.query(BrandAsset).filter(BrandAsset.id == asset_id)
+    if current_user:
+        query = query.filter(BrandAsset.workspace_id == current_user.workspace_id)
+    asset = query.first()
     if not asset or not asset.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Asset file not found.')
-    full_path = Path(settings.BASE_DIR) / asset.file_path
+    full_path = Path(asset.file_path) if Path(asset.file_path).is_absolute() else Path(settings.BASE_DIR) / asset.file_path
     if not full_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Stored asset file is missing.')
     media_type = asset.mime_type or 'application/octet-stream'
     return FileResponse(path=str(full_path), media_type=media_type, content_disposition_type='inline')
 
 @router.post('/{asset_id}/audit-logo')
+@router.get('/{asset_id}/audit-logo')
 def audit_logo_asset(asset_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset or not asset.file_path:

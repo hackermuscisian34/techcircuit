@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   ArrowRight
 } from "lucide-react";
-import { api, ReviewResult, Finding } from "@/lib/api";
+import { api, ReviewResult, Finding } from "../../lib/api";
 
 type InspectionMode = "SIMPLE" | "COMPLIANCE";
 
@@ -47,9 +47,9 @@ export default function FindingsPage() {
     async (findingId: string, resolution: "ACCEPTED" | "DISPUTED" | "OVERRIDDEN", note?: string) => {
       try {
         await api.updateFindingDecision(findingId, resolution, note);
-        setAuditPayload((prev) => {
+        setAuditPayload((prev: ReviewResult | null) => {
           if (!prev) return null;
-          const nextItems = prev.findings.map((item) =>
+          const nextItems = prev.findings.map((item: Finding) =>
             item.id === findingId ? { ...item, user_decision: resolution } : item
           );
           const nextPayload = { ...prev, findings: nextItems };
@@ -66,7 +66,7 @@ export default function FindingsPage() {
 
   const applyBulkFixes = useCallback(() => {
     if (!auditPayload) return;
-    auditPayload.findings.forEach((target) => {
+    auditPayload.findings.forEach((target: Finding) => {
       mutateDecision(target.id, "ACCEPTED");
     });
   }, [auditPayload, mutateDecision]);
@@ -80,12 +80,12 @@ export default function FindingsPage() {
   };
 
   const blockingIssues = useMemo(
-    () => (auditPayload?.findings || []).filter((f) => f.severity === "BLOCKING"),
+    () => (auditPayload?.findings || []).filter((f: Finding) => f.severity === "BLOCKING"),
     [auditPayload]
   );
 
   const isFullyRemediated = useMemo(
-    () => (auditPayload?.findings || []).length > 0 && (auditPayload?.findings || []).every((f) => f.user_decision === "ACCEPTED"),
+    () => (auditPayload?.findings || []).length > 0 && (auditPayload?.findings || []).every((f: Finding) => f.user_decision === "ACCEPTED"),
     [auditPayload]
   );
 
@@ -242,7 +242,7 @@ export default function FindingsPage() {
           </span>
         </div>
 
-        {auditPayload.findings.map((item) => {
+        {auditPayload.findings.map((item: Finding) => {
           const resolved = item.user_decision === "ACCEPTED";
           const severe = item.severity === "BLOCKING";
 
@@ -277,7 +277,7 @@ export default function FindingsPage() {
 
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-[#FFF9F3] text-[#8A7567] border border-[#F1E1D4]">
-                    Tier: {item.confidence_tier.replace("_", " ")}
+                    Tier: {(item.confidence_tier || "DETERMINISTIC").replace("_", " ")}
                   </span>
                 </div>
               </div>

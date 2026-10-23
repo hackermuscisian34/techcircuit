@@ -68,5 +68,7 @@ def seed_database(db: Session=None, is_test: bool=False):
     finally:
         if close_db:
             db.close()
+seed_synthetic_brand = seed_database
+
 if __name__ == '__main__':
     seed_database()
