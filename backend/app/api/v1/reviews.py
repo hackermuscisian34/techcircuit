@@ -19,6 +19,8 @@ from app.config import settings
 router = APIRouter(prefix='/reviews', tags=['Content Review'])
 
 @router.post('/run', response_model=ReviewResultResponse)
+@router.post('', response_model=ReviewResultResponse)
+@router.post('/', response_model=ReviewResultResponse)
 async def submit_and_review_content(title: str=Form(...), content_text: Optional[str]=Form(None), file: Optional[UploadFile]=File(None), current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     creator_id = current_user.id
     workspace_id = current_user.workspace_id
@@ -69,7 +71,18 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
     for af in a11y_findings:
         candidate_findings.append({'rule_id': None, 'rule_code': af['rule_code'], 'category': af.get('category', 'Accessibility'), 'severity': af.get('severity', 'ADVISORY'), 'span_start': af.get('span_start', 0), 'span_end': af.get('span_end', len(af.get('matched_text', ''))), 'matched_text': af.get('matched_text', ''), 'source_quote': 'WCAG 2.2 Editorial Accessibility Standard', 'source_section': 'Accessibility Guidelines', 'explanation': af['explanation'], 'evidence_status': 'VERIFIED', 'confidence_tier': 'DETERMINISTIC', 'suggested_correction': None, 'verification_status': 'VERIFIED'})
     tone_rules = [r for r in active_rules if r.category == 'Tone']
-    model_disclosure = {'provider': 'Local Ollama Inference', 'model': settings.OLLAMA_MODEL, 'is_local': True, 'is_fallback': False, 'prompt_injection_screened': True, 'redacted_tokens_count': len(redaction_map)}
+    active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface')
+    active_provider = 'Hugging Face Cloud Inference' if active_is_hf else 'Local Ollama Inference'
+    active_model = settings.HF_MODEL if active_is_hf else settings.OLLAMA_MODEL
+    model_disclosure = {
+        'provider': active_provider,
+        'model': active_model,
+        'region': settings.HF_REGION if active_is_hf else 'local',
+        'is_local': not active_is_hf,
+        'is_fallback': False,
+        'prompt_injection_screened': True,
+        'redacted_tokens_count': len(redaction_map)
+    }
     if tone_rules:
         tone_prompt = f"Analyze this marketing text against the following brand voice requirement:\nRule: {tone_rules[0].description}\nPass Example: {tone_rules[0].pass_example}\nFail Example: {tone_rules[0].fail_example}\n\nReturn JSON: 'has_violation' (boolean), 'matched_phrase' (string), 'explanation' (string), 'suggested_rewrite' (string)"
         ai_res = await llm_client.generate_structured(tone_prompt, redacted_content)
@@ -144,12 +157,15 @@ def get_submission_details(submission_id: str, current_user: User=Depends(get_cu
     return {'submission': ContentSubmissionResponse.model_validate(sub), 'version': {'id': latest_version.id if latest_version else None, 'version_number': latest_version.version_number if latest_version else 1, 'content_hash': latest_version.content_hash if latest_version else None, 'raw_text': latest_version.raw_text if latest_version else '', 'rulebook_version': latest_version.rulebook_version if latest_version else '1.0.0'}, 'findings': [FindingResponse.model_validate(f) for f in findings], 'claims': [ExtractedClaimResponse.model_validate(c) for c in claims], 'intent_card': IntentCardResponse.model_validate(intent_card) if intent_card else None}
 
 @router.put('/findings/{finding_id}/decision')
+@router.post('/findings/{finding_id}/decision')
 def update_finding_decision(finding_id: str, payload: FindingDecisionUpdate, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     finding = db.query(Finding).join(ContentVersion, Finding.content_version_id == ContentVersion.id).join(ContentSubmission, ContentVersion.submission_id == ContentSubmission.id).filter(Finding.id == finding_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
     if not finding:
         raise HTTPException(status_code=404, detail='Finding not found.')
-    finding.user_decision = payload.user_decision
+    decision_val = payload.user_decision or payload.decision or 'ACCEPTED'
+    finding.user_decision = decision_val
     db.commit()
-    if payload.user_decision == 'OVERRIDDEN':
-        record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='OVERRIDE_LOGGED', actor_id=current_user.id, actor_role=current_user.role, details={'finding_id': finding.id, 'rule_id': finding.rule_id, 'reason': payload.override_reason or 'Operational context justification'})
-    return {'message': 'Finding decision recorded', 'finding_id': finding.id, 'decision': payload.user_decision}
+    if decision_val == 'OVERRIDDEN':
+        reason_val = payload.override_reason or payload.note or 'Operational context justification'
+        record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='OVERRIDE_LOGGED', actor_id=current_user.id, actor_role=current_user.role, details={'finding_id': finding.id, 'rule_id': finding.rule_id, 'reason': reason_val})
+    return {'message': 'Finding decision recorded', 'finding_id': finding.id, 'decision': decision_val}

@@ -9,7 +9,7 @@ import {
   Upload, FileText, X, Sparkles, CheckCircle2,
   Cpu, ShieldCheck, ArrowRight
 } from "lucide-react";
-import { api, Rulebook, Fact, ReviewResult, AuditEvent } from "@/lib/api";
+import { api, Rulebook, Fact, ReviewResult, AuditEvent, Finding } from "../../lib/api";
 import { BorderBeam } from "@/components/animations/BorderBeam";
 import { MagnetButton } from "@/components/animations/MagnetButton";
 import { GlowCard } from "@/components/animations/GlowCard";
@@ -422,7 +422,7 @@ export default function DashboardPage() {
 
                   {quickAuditReport.findings && quickAuditReport.findings.length > 0 && (
                     <div className="space-y-2">
-                      {quickAuditReport.findings.map((f, i) => (
+                      {quickAuditReport.findings.map((f: Finding, i: number) => (
                         <div key={f.id || i} className="p-3 rounded-xl bg-[#FFF9F3] border border-[#FDBA74] text-xs flex items-start justify-between gap-2">
                           <div>
                             <div className="font-extrabold text-[#201815]">{f.category}: {f.description}</div>
@@ -603,7 +603,7 @@ export default function DashboardPage() {
                   const Icon = badgeCfg.icon;
                   const label = ev.details?.title || ev.details?.action || ev.event_type.replace(/_/g, " ");
                   const sub = `Actor: ${ev.actor_role || "User"}`;
-                  const time = new Date(ev.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                  const time = new Date(ev.created_at || ev.timestamp || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
                   return (
                     <ScrollReveal key={ev.id || i} direction="right" delay={i * 70}>

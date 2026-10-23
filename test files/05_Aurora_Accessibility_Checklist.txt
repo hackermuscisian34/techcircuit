@@ -1,0 +1,6 @@
+AURORA ACCESSIBILITY CHECKLIST (WCAG 2.2 AA)
+
+1. Text Contrast: All body copy must achieve at least 4.5:1 contrast against background canvas.
+2. Link Text: Links must clearly describe destination (never use generic 'click here' or 'read more').
+3. Image Alt Text: All informative graphics require descriptive alt text.
+4. Non-Color Indicators: Critical alert statuses must include icons or text tags, not color alone.

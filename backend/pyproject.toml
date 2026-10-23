@@ -1,0 +1,22 @@
+[tool.pyrefly]
+search-path = [
+    "."
+]
+python-interpreter-path = ".venv/Scripts/python.exe"
+project-includes = [
+    "app",
+    "tests"
+]
+project-excludes = [
+    ".venv",
+    "**/__pycache__"
+]
+
+[tool.pyright]
+include = ["app", "tests"]
+extraPaths = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"

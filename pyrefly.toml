@@ -1,0 +1,11 @@
+search-path = [
+    "backend"
+]
+python-interpreter-path = "backend/.venv/Scripts/python.exe"
+project-includes = [
+    "backend"
+]
+project-excludes = [
+    "backend/.venv",
+    "**/__pycache__"
+]

@@ -73,7 +73,7 @@ The System Administrator possesses full supervisory authority over the entire FI
    - Access `/audit` to inspect the append-only SHA-256 hash chain linking every review, override, and approval.
    - Run cryptographic tamper-detection algorithms to verify that no log events or receipts have been altered.
 2. **System Health & LLM Runtime Control**:
-   - Access `/settings` to inspect Ollama local model availability (`qwen2.5:1.5b` / `qwen2.5:3b`), memory usage, and fallback mock heuristics.
+   - Access `/settings` to inspect LLM model availability (Hugging Face Cloud Qwen 2.5 API with regional endpoints / Ollama local `qwen2.5`), memory usage, and fallback mock heuristics.
 3. **Emergency Override & Elevation**:
    - Can override and unblock content in emergency scenarios (logged as an explicit `ADMIN_OVERRIDE` audit block).
    - Can invite and provision privileged roles (Brand Manager, Approver, Reviewer).

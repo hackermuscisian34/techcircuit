@@ -194,8 +194,10 @@ class FindingResponse(BaseModel):
         from_attributes = True
 
 class FindingDecisionUpdate(BaseModel):
-    user_decision: str
+    user_decision: Optional[str] = None
+    decision: Optional[str] = None
     override_reason: Optional[str] = None
+    note: Optional[str] = None
 
 class ContentSubmissionCreate(BaseModel):
     title: str

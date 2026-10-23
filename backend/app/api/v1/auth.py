@@ -71,3 +71,40 @@ def update_user_role(target_user_id: str, payload: RoleUpdateRequest, current_us
     db.commit()
     db.refresh(target_user)
     return target_user
+
+class SwitchPersonaRequest(BaseModel):
+    role: str
+
+@router.post('/switch-persona', response_model=Token)
+@router.post('/switch-persona/', response_model=Token)
+def switch_persona(payload: SwitchPersonaRequest, db: Session = Depends(get_db)):
+    target_role = payload.role.strip().upper()
+    role_email_map = {
+        'ADMIN': 'alfred@apexdynamics.example',
+        'BRAND_MANAGER': 'sebin@apexdynamics.example',
+        'AUTHORISED_REVIEWER': 'albert@apexdynamics.example',
+        'CREATOR': 'adhithya@apexdynamics.example',
+        'APPROVER': 'biju@apexdynamics.example',
+    }
+    user = None
+    target_email = role_email_map.get(target_role)
+    if target_email:
+        user = db.query(User).filter(func.lower(User.email) == target_email).first()
+    if not user:
+        user = db.query(User).filter(User.role == target_role, User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No active user found with role '{target_role}'."
+        )
+    token_data = {'sub': user.id, 'email': user.email, 'role': user.role, 'workspace_id': user.workspace_id}
+    access_token = create_access_token(token_data)
+    return Token(
+        access_token=access_token,
+        token_type='bearer',
+        user_id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        workspace_id=user.workspace_id,
+    )

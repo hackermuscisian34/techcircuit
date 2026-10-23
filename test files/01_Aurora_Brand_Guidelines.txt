@@ -1,0 +1,31 @@
+AURORA LABS BRAND GUIDELINES (Rulebook Compilation Fixture)
+
+1. Brand Voice
+Use a clear, friendly, confident voice. Avoid exaggerated promises and aggressive sales language.
+Do not describe the product as 'revolutionary', 'perfect', or 'guaranteed to work for everyone'.
+Prefer short sentences and explain technical terms when writing for new users.
+
+2. Approved Terminology
+The product name is Aurora Desk. Always use this exact spelling and capitalization.
+Use 'team workspace' instead of 'collaboration hub'.
+Write 'sign in' as two words. Do not use 'login' as a verb.
+
+3. Claims and Evidence
+Never claim 100% uptime unless an approved, current source explicitly supports the exact claim.
+Performance claims must include the tested environment and measurement period.
+Customer counts, savings, and percentages must match the current Approved Facts Sheet.
+
+4. Visual Identity
+Primary brand orange is #F97316. Deep orange is #C2410C. Warm background is #FFFAF5.
+Use the approved Aurora Labs logo without stretching, recoloring, or placing it on a visually busy background.
+Maintain clear space around the logo equal to the height of the logo's symbol.
+
+5. Accessibility
+Provide meaningful alternative text for informative images.
+Do not communicate status using color alone; include a text label or icon with an accessible name.
+Links must describe their destination. Avoid link labels such as 'click here'.
+
+6. Publication Rules
+Blocking: unsupported factual claims, incorrect product name, or prohibited absolute guarantees.
+Warning: terminology drift, overly aggressive tone, or missing image alternative text.
+Advisory: long sentences or optional opportunities to improve clarity.

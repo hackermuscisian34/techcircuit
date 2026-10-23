@@ -9,20 +9,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
 from app.db.session import init_db, SessionLocal
 from app.db.models import Rule, Rulebook, Fact, ContentSubmission, AuditEvent
-from app.core.compiler import RuleCompiler
-from app.core.deterministic import DeterministicEngine
-from app.core.intent_lock import IntentLockEngine
-from app.core.claim_ledger import ClaimLedger
+from app.core.deterministic import check_terminology_rules
+from app.core.intent_lock import intent_lock
 from app.core.citation import CitationVerifier
-from app.core.audit_chain import AuditChain
-from app.seed.synthetic_brand import seed_synthetic_brand
+from app.core.audit_chain import calculate_sha256
+from app.seed.synthetic_brand import seed_database
 
 import gradio as gr
 
 init_db()
 db = SessionLocal()
 if db.query(Rule).count() == 0:
-    seed_synthetic_brand(db)
+    seed_database(db, is_test=True)
 db.close()
 
 def run_fidelis_review(draft_text: str):
@@ -31,38 +29,46 @@ def run_fidelis_review(draft_text: str):
     
     db = SessionLocal()
     try:
-        active_rulebook = db.query(Rulebook).filter(Rulebook.version == "v2.4").first()
-        active_rules = db.query(Rule).filter(Rule.status == "ACTIVE").all() if active_rulebook else []
+        active_rulebook = db.query(Rulebook).filter(Rulebook.status == "ACTIVE").first()
+        rulebook_id = active_rulebook.id if active_rulebook else ""
+        active_rules = db.query(Rule).filter(Rule.status == "ACTIVE").all()
         active_facts = db.query(Fact).all()
 
-        det_findings = DeterministicEngine.evaluate_content(
-            content_text=draft_text,
-            rules=active_rules,
-            facts=active_facts
-        )
+        rule_dicts = [
+            {
+                "id": r.id,
+                "rule_code": r.rule_code,
+                "category": r.category,
+                "severity": r.severity,
+                "enforcement_type": r.enforcement_type,
+                "source_quote": r.source_quote,
+                "source_section": r.source_section,
+                "description": r.description,
+                "pass_example": r.pass_example,
+                "fail_example": r.fail_example,
+                "pattern": r.pattern,
+                "ambiguity_status": r.ambiguity_status
+            }
+            for r in active_rules
+        ]
 
-        claim_eval = ClaimLedger.evaluate_claims(
-            content_text=draft_text,
-            extracted_claims=[],
-            facts=active_facts
-        )
+        det_findings = check_terminology_rules(draft_text, rule_dicts)
+        verifier = CitationVerifier(db)
+        verified_findings = verifier.verify_all(det_findings, rulebook_id, draft_text)
 
-        all_findings = det_findings + claim_eval["unsubstantiated_findings"]
-        verified_findings = CitationVerifier.verify_findings(all_findings, active_rules)
-
-        intent_result = IntentLockEngine.generate_minimal_suggestions(
+        intent_result = intent_lock.generate_minimal_suggestion(
             original_text=draft_text,
             findings=verified_findings
         )
 
         suggested_text = intent_result.get("suggested_text", draft_text)
-        content_hash = hashlib.sha256(draft_text.encode("utf-8")).hexdigest()
+        content_hash = calculate_sha256(draft_text)
 
         findings_report = []
         for f in verified_findings:
             sev = f.get("severity", "WARNING")
             code = f.get("rule_code", "UNKNOWN")
-            msg = f.get("message", "")
+            msg = f.get("explanation") or f.get("message", "")
             quote = f.get("source_quote", "N/A")
             sec = f.get("source_section", "")
             findings_report.append(f"[{sev}] Rule {code}: {msg}\n  → Citation: \"{quote}\" ({sec})\n")
@@ -114,10 +120,13 @@ def list_active_facts():
 def list_audit_trail():
     db = SessionLocal()
     try:
-        events = db.query(AuditEvent).order_by(AuditEvent.timestamp.desc()).limit(15).all()
+        events = db.query(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(15).all()
         output = []
         for e in events:
-            output.append(f"- **Block #{e.sequence_id}** [{e.timestamp.strftime('%Y-%m-%d %H:%M:%S')}]: `{e.event_type}`\n  Hash: `{e.current_hash[:16]}...` (Prev: `{e.previous_hash[:16]}...`)")
+            stamp = e.created_at.strftime('%Y-%m-%d %H:%M:%S') if e.created_at else e.timestamp_str
+            curr_h = (e.current_event_hash or '')[:16]
+            prev_h = (e.prev_event_hash or '')[:16]
+            output.append(f"- **Block #{e.sequence_number}** [{stamp}]: `{e.event_type}`\n  Hash: `{curr_h}...` (Prev: `{prev_h}...`)")
         return "\n".join(output) if output else "Audit chain initialized with genesis block."
     finally:
         db.close()

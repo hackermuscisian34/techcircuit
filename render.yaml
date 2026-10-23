@@ -1,0 +1,37 @@
+services:
+  # ─────────────────────────────────────────────────────────
+  # CANON / FIDELIS FastAPI Backend Service
+  # ─────────────────────────────────────────────────────────
+  - type: web
+    name: canon-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////app/canon.db
+
+      # Pre-trained Open-Source LLM Settings (Hugging Face Serverless / Regional)
+      - key: LLM_PROVIDER
+        value: huggingface
+      - key: HF_TOKEN
+        sync: false # Set your Hugging Face User Access Token (read permissions) in Render Dashboard
+      - key: HF_MODEL
+        value: Qwen/Qwen2.5-7B-Instruct # or Qwen/Qwen2.5-72B-Instruct, Qwen/Qwen2.5-1.5B-Instruct
+      - key: HF_REGION
+        value: auto # or us-east-1, eu-west-1, ap-southeast-1, or dedicated endpoint region
+      - key: HF_ENDPOINT_URL
+        sync: false # Optional: custom dedicated regional endpoint e.g. https://xxx.us-east-1.endpoints.huggingface.cloud/v1
+      - key: ALLOW_MOCK_LLM_FALLBACK
+        value: "true"
+
+      # Cross-Origin Resource Sharing for Vercel Frontend
+      - key: CORS_ORIGINS
+        value: "*"

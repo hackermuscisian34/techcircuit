@@ -50,3 +50,4 @@ class GuidelineCompiler:
         normalized_corpus = guideline_text.lower()
         return [RuleCalibrator.audit_entry(candidate, normalized_corpus) for candidate in raw_candidates]
 compiler = GuidelineCompiler()
+RuleCompiler = GuidelineCompiler

@@ -33,13 +33,13 @@ const REDACTION_PIPELINE: readonly MaskingRule[] = [
 const RUNTIME_METRICS = [
   {
     caption: "Inference Runtime",
-    title: "Ollama Local Daemon",
-    body: "Executes on local hardware. Zero network calls or external cloud dependencies.",
+    title: "Hugging Face Cloud API / Local Ollama",
+    body: "Pre-trained open-source inference hosted via Hugging Face Serverless/Dedicated Regional APIs on Render & Vercel, with local Ollama fallback.",
   },
   {
     caption: "Model Weight Architecture",
-    title: "qwen2.5:1.5b (Open-Weight Apache 2.0)",
-    body: "Fast, deterministic instruction-tuned model specialized in structured governance evaluations.",
+    title: "Qwen 2.5 (Open-Weight Apache 2.0)",
+    body: "Pre-trained instruction-tuned model specialized in structured governance evaluations and zero-drift JSON schemas.",
   },
   {
     caption: "Sampling Temperature",
@@ -156,7 +156,7 @@ export default function SettingsPage() {
             <label className="text-xs font-bold text-[#382A20]">Draft Copy (Contains Sensitive Info)</label>
             <textarea
               value={draftPayload}
-              onChange={(evt) => setDraftPayload(evt.target.value)}
+              onChange={(evt: React.ChangeEvent<HTMLTextAreaElement>) => setDraftPayload(evt.target.value)}
               className="editorial-input w-full h-32 p-3 text-xs leading-relaxed"
               placeholder="Type sensitive text containing codenames or pricing..."
             />

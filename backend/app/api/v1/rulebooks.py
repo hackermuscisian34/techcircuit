@@ -1,5 +1,5 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from typing import List, Optional, Any
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import Rulebook, Rule, RuleTestCase, User
@@ -12,6 +12,9 @@ from app.config import settings
 router = APIRouter(prefix='/rulebooks', tags=['Brand Rulebook & Compiler'])
 
 @router.get('', response_model=RulebookResponse)
+@router.get('/', response_model=RulebookResponse)
+@router.get('/active', response_model=RulebookResponse)
+@router.get('/active/', response_model=RulebookResponse)
 def get_active_rulebook(current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     rulebook = db.query(Rulebook).filter(Rulebook.workspace_id == current_user.workspace_id, Rulebook.status == 'ACTIVE').first()
     if not rulebook:
@@ -49,9 +52,42 @@ async def compile_guideline_document(text: Optional[str]=Form(None), file: Optio
     return {'source_document': source_filename, 'extracted_characters': len(guideline_content), 'candidate_rules_count': len(compiled_rules), 'rules': compiled_rules}
 
 @router.post('/publish')
-def publish_rulebook_version(title: str=Form(...), version: str=Form(...), rules_json: str=Form(...), current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
+async def publish_rulebook_version(
+    request: Request,
+    title: Optional[str] = Form(None),
+    version: Optional[str] = Form(None),
+    rules_json: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     import json
-    parsed_rules = json.loads(rules_json)
+    content_type = request.headers.get("content-type", "")
+    parsed_rules = []
+    
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            title = body.get("title") or title
+            version = body.get("version") or version
+            raw_rules = body.get("rules") if "rules" in body else body.get("rules_json")
+            if isinstance(raw_rules, list):
+                parsed_rules = raw_rules
+            elif isinstance(raw_rules, str):
+                parsed_rules = json.loads(raw_rules)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {str(e)}")
+    else:
+        if rules_json:
+            try:
+                parsed_rules = json.loads(rules_json)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid rules_json string: {str(e)}")
+
+    if not title:
+        raise HTTPException(status_code=422, detail="Missing required 'title'.")
+    if not version:
+        raise HTTPException(status_code=422, detail="Missing required 'version'.")
+
     workspace_id = current_user.workspace_id
     prev = db.query(Rulebook).filter(Rulebook.workspace_id == workspace_id, Rulebook.status == 'ACTIVE').all()
     for p in prev:
@@ -60,11 +96,32 @@ def publish_rulebook_version(title: str=Form(...), version: str=Form(...), rules
     db.add(new_rulebook)
     db.flush()
     for r in parsed_rules:
-        new_rule = Rule(rulebook_id=new_rulebook.id, rule_code=r.get('rule_code', 'GEN-01'), title=r.get('title', 'Brand Rule'), category=r.get('category', 'Tone'), description=r.get('description', ''), source_quote=r.get('source_quote', ''), source_section=r.get('source_section', 'General'), severity=r.get('severity', 'BLOCKING'), enforcement_type=r.get('enforcement_type', 'DETERMINISTIC'), pass_example=r.get('pass_example'), fail_example=r.get('fail_example'), ambiguity_status=r.get('ambiguity_status', 'CLEAR'), status='ACTIVE')
+        new_rule = Rule(
+            rulebook_id=new_rulebook.id,
+            rule_code=r.get('rule_code', 'GEN-01'),
+            title=r.get('title', 'Brand Rule'),
+            category=r.get('category', 'Tone'),
+            description=r.get('description', ''),
+            source_quote=r.get('source_quote', ''),
+            source_section=r.get('source_section', 'General'),
+            severity=r.get('severity', 'BLOCKING'),
+            enforcement_type=r.get('enforcement_type', 'DETERMINISTIC'),
+            pass_example=r.get('pass_example'),
+            fail_example=r.get('fail_example'),
+            ambiguity_status=r.get('ambiguity_status', 'CLEAR'),
+            status='ACTIVE'
+        )
         db.add(new_rule)
     db.commit()
     db.refresh(new_rulebook)
-    record_audit_event(db=db, workspace_id=workspace_id, event_type='RULEBOOK_ACTIVATION', actor_id=current_user.id, actor_role=current_user.role, details={'rulebook_id': new_rulebook.id, 'version': version, 'title': title, 'rules_count': len(parsed_rules)})
+    record_audit_event(
+        db=db,
+        workspace_id=workspace_id,
+        event_type='RULEBOOK_ACTIVATION',
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        details={'rulebook_id': new_rulebook.id, 'version': version, 'title': title, 'rules_count': len(parsed_rules)}
+    )
     return {'message': 'Rulebook published successfully', 'rulebook_id': new_rulebook.id, 'version': version}
 
 @router.put('/rules/{rule_id}', response_model=RuleResponse)
@@ -80,6 +137,7 @@ def update_rule(rule_id: str, payload: RuleUpdate, current_user: User=Depends(re
     return RuleResponse.model_validate(rule)
 
 @router.post('/rules/{rule_id}/run-tests')
+@router.post('/rules/{rule_id}/test')
 def run_rule_unit_tests(rule_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     rule = db.query(Rule).join(Rulebook, Rule.rulebook_id == Rulebook.id).filter(Rule.id == rule_id, Rulebook.workspace_id == current_user.workspace_id).first()
     if not rule:

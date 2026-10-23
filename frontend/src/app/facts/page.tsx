@@ -22,7 +22,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
-import { api, Fact, CandidateFact, FactExtractionResult } from "@/lib/api";
+import { api, Fact, CandidateFact, FactExtractionResult } from "../../lib/api";
 
 type FactFilterKind = "ALL" | "ACTIVE" | "STALE";
 
@@ -77,7 +77,7 @@ export default function FactsPage() {
       const savedUser = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name");
       const savedEmail = localStorage.getItem("fidelis_user_email") || localStorage.getItem("canon_user_email");
       if (savedUser) {
-        setCandidateDraft((prev) => ({
+        setCandidateDraft((prev: Partial<Fact>) => ({
           ...prev,
           owner_name: savedUser,
           owner_email: savedEmail || prev.owner_email,
@@ -236,7 +236,7 @@ export default function FactsPage() {
       const res = await api.extractFacts(data);
       if (res.candidate_facts.length > 0) {
         const lead = res.candidate_facts[0];
-        setCandidateDraft((prev) => ({
+        setCandidateDraft((prev: Partial<Fact>) => ({
           ...prev,
           fact_code: lead.fact_code,
           subject: lead.subject,
@@ -295,7 +295,7 @@ export default function FactsPage() {
         f.subject.toLowerCase().includes(keyword) ||
         f.approved_statement.toLowerCase().includes(keyword) ||
         f.fact_code.toLowerCase().includes(keyword) ||
-        f.source_document.toLowerCase().includes(keyword);
+        (f.source_document || "").toLowerCase().includes(keyword);
 
       if (filterSegment === "ACTIVE") return matchesSearch && !f.is_expired;
       if (filterSegment === "STALE") return matchesSearch && f.is_expired;
@@ -524,7 +524,7 @@ export default function FactsPage() {
           </p>
 
           <div className="grid grid-cols-1 gap-4">
-            {aiExtractionOutput.candidate_facts.map((candidate, idx) => {
+            {aiExtractionOutput.candidate_facts.map((candidate: CandidateFact, idx: number) => {
               const isCertified = certifiedCodesMap[candidate.fact_code];
               const isBusy = certifyingFactCode === candidate.fact_code;
 
@@ -602,7 +602,7 @@ export default function FactsPage() {
                   <div className="mt-3 flex items-center justify-between text-[11px] text-[#7C6A5E]">
                     <div className="flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-[#EA580C]" />
-                      <span>Valid until: <strong>{new Date(candidate.valid_until).toLocaleDateString()}</strong> (Auto 1-year verification)</span>
+                      <span>Valid until: <strong>{candidate.valid_until ? new Date(candidate.valid_until).toLocaleDateString() : "Perpetual"}</strong> (Auto 1-year verification)</span>
                     </div>
                     <span className="text-[10px] text-emerald-700 font-bold">100% Zero Hallucination Citation</span>
                   </div>
@@ -773,7 +773,7 @@ export default function FactsPage() {
                     <span>
                       Evidence Valid Until:{" "}
                       <strong className={isStale ? "text-[#B42318] font-bold" : "text-[#21160F] font-bold"}>
-                        {new Date(fact.valid_until).toLocaleDateString()}
+                        {fact.valid_until ? new Date(fact.valid_until).toLocaleDateString() : "Perpetual"}
                       </strong>
                     </span>
                   </div>
@@ -782,11 +782,11 @@ export default function FactsPage() {
                     {isStale ? (
                       <>
                         <button
-                          onClick={() => triggerToast(`Proof renewal request sent to ${fact.owner_name} (${fact.owner_email})!`)}
+                          onClick={() => triggerToast(`Proof renewal request sent to ${fact.owner_name || "Owner"} (${fact.owner_email || ""})!`)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-[#FFFAF5] text-[#B42318] font-bold border border-[#FECDCA] transition-colors cursor-pointer"
                         >
                           <Send className="w-3.5 h-3.5" />
-                          <span>Request Proof from {fact.owner_name.split(" ")[0]}</span>
+                          <span>Request Proof from {(fact.owner_name || "Owner").split(" ")[0]}</span>
                         </button>
                         <button
                           onClick={() => dispatchProofRenewal(fact.id)}
@@ -888,7 +888,7 @@ export default function FactsPage() {
                   <input
                     type="text"
                     placeholder="e.g. 99.98"
-                    value={candidateDraft.normalized_value}
+                    value={candidateDraft.normalized_value ?? ""}
                     onChange={(e) => setCandidateDraft({ ...candidateDraft, normalized_value: e.target.value })}
                     className="editorial-input w-full p-2.5 text-xs mt-1"
                   />
@@ -898,7 +898,7 @@ export default function FactsPage() {
                   <input
                     type="text"
                     placeholder="e.g. % or ms or customers"
-                    value={candidateDraft.normalized_unit}
+                    value={candidateDraft.normalized_unit ?? ""}
                     onChange={(e) => setCandidateDraft({ ...candidateDraft, normalized_unit: e.target.value })}
                     className="editorial-input w-full p-2.5 text-xs mt-1"
                   />

@@ -1335,14 +1335,21 @@ export default function BrandAssetsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#F4E2D3]">
               <div className="flex items-center gap-2">
                 {activeAsset.file_path && (
-                  <a
-                    href={api.getAssetDownloadUrl(activeAsset.id)}
-                    download
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-[#F4E2D3] hover:border-[#F97316] text-[#21160F] text-xs font-bold transition-all shadow-xs"
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        showToast(`Downloading ${activeAsset.file_name || activeAsset.name}...`);
+                        await api.downloadAssetFile(activeAsset.id, activeAsset.file_name);
+                      } catch (err: any) {
+                        window.open(api.getAssetDownloadUrl(activeAsset.id), "_blank");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-[#F4E2D3] hover:border-[#F97316] text-[#21160F] text-xs font-bold transition-all shadow-xs cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-[#EA580C]" />
                     <span>Download File</span>
-                  </a>
+                  </button>
                 )}
                 {canApprove && (
                   <button

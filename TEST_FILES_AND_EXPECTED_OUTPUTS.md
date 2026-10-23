@@ -1,0 +1,175 @@
+# 🧪 FIDELIS / CANON &mdash; Test Suite & Expected Outputs Guide
+
+This guide details every test fixture in the [`test files/`](file:///c:/Users/bijuf/techcircuit/test%20files) directory, which UI screen to test it on, how to test it, and the **exact expected output**.
+
+---
+
+## 📂 Quick Summary of Test Files
+
+| File | Format | Target UI Route | Primary Scenario Tested |
+| :--- | :--- | :--- | :--- |
+| **`01_Aurora_Brand_Guidelines`** | `.pdf` / `.txt` | [`/rulebook`](http://localhost:3000/rulebook) | AI Rule Compilation & Test Suite Generation |
+| **`02_Aurora_Approved_Facts`** | `.pdf` / `.txt` | [`/facts`](http://localhost:3000/facts) | 1-Click Fact Extraction & Brand Vault Certification |
+| **`03_Aurora_Marketing_Draft_Intentionally_Bad`** | `.pdf` / `.txt` | [`/review`](http://localhost:3000/review) | Adversarial Violations, Claim Contradiction & 1-Click Fixes |
+| **`06_Aurora_Compliant_Campaign_Draft`** | `.pdf` / `.txt` | [`/review`](http://localhost:3000/review) | Benchmark 100% Compliant Pass (0 Blocking Flags) |
+| **`04_Aurora_Visual_Asset_Standards`** | `.pdf` / `.txt` | [`/assets`](http://localhost:3000/assets) | Palette Ingestion, WCAG Contrast & Logo Spacing Rules |
+| **`05_Aurora_Accessibility_Checklist`** | `.pdf` / `.txt` | [`/guide`](http://localhost:3000/guide) | Operational Checklist & Accessibility Rule Reference |
+| **`07_Aurora_Logo_Compliant.png`** | `.png` (300x300) | [`/assets`](http://localhost:3000/assets) | Compliant 1:1 Aspect Ratio Vector Logo Asset |
+| **`08_Aurora_Logo_Distorted_Stretched.png`** | `.png` (520x140) | [`/assets`](http://localhost:3000/assets) or [`/review`](http://localhost:3000/review) | Visual Audit Warning for Aspect Ratio Distortion |
+
+---
+
+## 1. Test Scenario A: Compile Brand Guidelines
+
+* **Target Page**: [`http://localhost:3000/rulebook`](http://localhost:3000/rulebook)
+* **Persona**: `Brand Manager` (`sebin`) or `Admin` (`alfred`)
+* **Test File**: `01_Aurora_Brand_Guidelines.pdf` (or paste `01_Aurora_Brand_Guidelines.txt`)
+
+### How to Execute:
+1. Open [`/rulebook`](http://localhost:3000/rulebook).
+2. Under **"AI Guideline Ingestion Engine"**, upload `01_Aurora_Brand_Guidelines.pdf` (or paste the text into the manual input box).
+3. Click **"Analyze & Compile Guidelines"**.
+4. Review the extracted candidate rules table.
+5. Click **"Certify & Publish Rulebook"**.
+
+### ✅ Expected Output:
+* **Compiled Candidate Rules**: The system parses the document and extracts structured rule cards:
+  * **Rule 1 (Voice)**: Prohibits `revolutionary`, `perfect`, and guarantees to work for everyone. Severity: `BLOCKING`.
+  * **Rule 2 (Naming)**: Enforces exact capitalization for `Aurora Desk`.
+  * **Rule 3 (Terminology)**: Enforces `team workspace` instead of `collaboration hub`, and `sign in` instead of `login` as a verb.
+  * **Rule 4 (Claims)**: Prohibits unverified `100% uptime` claims.
+  * **Rule 5 (Links)**: Flags generic link labels like `click here`.
+* **Publication Toast**: *"Rulebook version 1.1.0 published and activated across workspace!"*
+* **Active Status**: Status badge switches to **ACTIVE (Version 1.1.0)** with all extracted rules live in enforcement.
+
+---
+
+## 2. Test Scenario B: Fact Vault Extraction & Certification
+
+* **Target Page**: [`http://localhost:3000/facts`](http://localhost:3000/facts)
+* **Persona**: `Brand Manager` (`sebin`) or `Admin` (`alfred`)
+* **Test File**: `02_Aurora_Approved_Facts.pdf` (or paste `02_Aurora_Approved_Facts.txt`)
+
+### How to Execute:
+1. Open [`/facts`](http://localhost:3000/facts).
+2. Under **"AI Proof Ingestion & Claim Miner"**, upload `02_Aurora_Approved_Facts.pdf`.
+3. Click **"Mine Certified Facts from PDF"**.
+4. The system will display the candidate facts mined from the document.
+5. Click **"Certify to Brand Vault"** on candidate cards.
+
+### ✅ Expected Output:
+* **Extracted Candidate Facts**:
+  1. `FACT-001`: *Aurora Desk supports team workspaces for project coordination.* (Valid until: June 2027)
+  2. `FACT-002`: *The standard plan costs $12 per user per month when billed monthly.* (Value: `12`, Unit: `$/user/month`, Valid until: Dec 2026)
+  3. `FACT-003`: *In an internal test, 24 participants completed the onboarding task in under 10 minutes.* (Value: `10`, Unit: `minutes`, Valid until: Jan 2027)
+  4. `FACT-004`: *Aurora Desk does not guarantee uninterrupted service (99.9% target SLA).* (Valid until: Dec 2027)
+  5. `FACT-005`: *Aurora Labs has 18 employees as of 2026-09-01.* (Value: `18`, Unit: `employees`, Valid until: Nov 2026)
+* **Vault Certification Status**: Certified cards appear in the **"Active Certified Brand Truths"** table with **Active** green status pills and verified citation badges.
+
+---
+
+## 3. Test Scenario C: Adversarial Marketing Review (Intentionally Bad)
+
+* **Target Page**: [`http://localhost:3000/review`](http://localhost:3000/review)
+* **Persona**: `Content Creator` (`adhithya`) or `Compliance Reviewer` (`albert`)
+* **Test File**: `03_Aurora_Marketing_Draft_Intentionally_Bad.pdf` (or paste `03_Aurora_Marketing_Draft_Intentionally_Bad.txt`)
+
+### How to Execute:
+1. Open [`/review`](http://localhost:3000/review).
+2. Set document name: `03 Aurora Adversarial Draft`.
+3. Drag & drop `03_Aurora_Marketing_Draft_Intentionally_Bad.pdf` into the upload zone (or paste text into the expandable text area).
+4. Click **"Run Full Compliance & Fact Audit"**.
+
+### ✅ Expected Output:
+* **Compliance Verdict**: **BLOCKED (Non-Compliant)** with multiple red and amber flags.
+* **Flagged Violations**:
+  1. 🔴 **Prohibited Superlative**: Flagged word `"revolutionary"` &rarr; Suggestion: Remove or replace with *"innovative"*.
+  2. 🔴 **Terminology Drift**: Flagged phrase `"collaboration hub"` &rarr; Suggestion: Replace with *"team workspace"*.
+  3. 🔴 **Prohibited Superlative**: Flagged word `"perfect"` &rarr; Suggestion: *"suitable for every team"*.
+  4. 🔴 **Unsubstantiated Fact / Contradiction**: Flagged `"guarantees 100% uptime"` &rarr; Reason: *Contradicts FACT-004 (SLA is 99.9% and does not guarantee uninterrupted service)*.
+  5. 🔴 **Factual Contradiction**: Flagged `"$9 per user monthly"` &rarr; Reason: *Conflicts with certified pricing FACT-002 ($12/user/month)*.
+  6. 🔴 **Factual Contradiction**: Flagged `"180 employees"` &rarr; Reason: *Conflicts with certified headcount FACT-005 (18 employees)*.
+  7. 🟡 **Unsubstantiated Claim**: Flagged `"all customers finish onboarding in under 10 minutes"` &rarr; Reason: *Evidence in FACT-003 is strictly limited to 24 test participants, not all customers*.
+  8. 🟡 **Accessibility Warning**: Flagged `"Click here"` &rarr; Reason: *Generic link text violates accessibility guideline 5.3*.
+* **Interactive Diffs & 1-Click Fixes**:
+  * Clicking **"Accept 1-Click Fix"** replaces the offending word in-place with the compliant alternative.
+  * Once all fixes are accepted, the submission turns **Green / Compliant** and unlocks the **"Submit for Sign-Off"** button!
+
+---
+
+## 4. Test Scenario D: Compliant Marketing Review (100% Clean Pass)
+
+* **Target Page**: [`http://localhost:3000/review`](http://localhost:3000/review)
+* **Persona**: `Content Creator` (`adhithya`)
+* **Test File**: `06_Aurora_Compliant_Campaign_Draft.pdf` (or paste `06_Aurora_Compliant_Campaign_Draft.txt`)
+
+### How to Execute:
+1. Open [`/review`](http://localhost:3000/review).
+2. Upload `06_Aurora_Compliant_Campaign_Draft.pdf`.
+3. Click **"Run Full Compliance & Fact Audit"**.
+
+### ✅ Expected Output:
+* **Compliance Verdict**: **100% PASSED &bull; ZERO BLOCKING FLAGS**.
+* **Claims Evaluation**:
+  * *Aurora Desk supports team workspaces* &rarr; **SUPPORTED by FACT-001**.
+  * *$12 per user per month billed monthly* &rarr; **SUPPORTED by FACT-002**.
+  * *24 participants completed onboarding in under 10 minutes (UX-24)* &rarr; **SUPPORTED by FACT-003**.
+  * *18 team members* &rarr; **SUPPORTED by FACT-005**.
+* **Action Unlocked**: The **"Submit for Sign-Off"** button is immediately enabled to send the draft to the Approver queue!
+
+---
+
+## 5. Test Scenario E: Visual Brand Asset Checks (Logo Aspect Ratio)
+
+* **Target Page**: [`http://localhost:3000/assets`](http://localhost:3000/assets)
+* **Persona**: `Brand Manager` (`sebin`) or `Admin` (`alfred`)
+* **Test Files**:
+  * Clean Asset: `07_Aurora_Logo_Compliant.png`
+  * Distorted Asset: `08_Aurora_Logo_Distorted_Stretched.png`
+
+### How to Execute:
+1. Open [`/assets`](http://localhost:3000/assets).
+2. Click **"Upload New Asset"**.
+3. First, upload `07_Aurora_Logo_Compliant.png`:
+   * Category: `Logos`
+   * Intended Usage: `Header mark for web and product UI`
+   * Click **Upload**.
+4. Next, upload `08_Aurora_Logo_Distorted_Stretched.png`:
+   * Category: `Logos`
+   * Click **Upload**.
+5. Click **"Audit Aspect Ratio"** on both asset cards.
+
+### ✅ Expected Output:
+* **Compliant Logo (`07_Aurora_Logo_Compliant.png`)**:
+  * Dimensions: `300x300` px. Aspect Ratio: `1.00:1`.
+  * Visual Audit Result: **Pass (Valid aspect ratio & clear margins)**.
+* **Distorted Logo (`08_Aurora_Logo_Distorted_Stretched.png`)**:
+  * Dimensions: `520x140` px. Aspect Ratio: `3.71:1`.
+  * Visual Audit Result: ⚠️ **Warning: Detected horizontal aspect ratio distortion (exceeds allowable standard). Requires Brand Manager exception or re-export.**
+
+---
+
+## 6. Test Scenario F: Sign-Off, Audited Exceptions & HMAC Verification
+
+* **Target Pages**: [`/approvals`](http://localhost:3000/approvals) &rarr; [`/audit`](http://localhost:3000/audit)
+* **Persona**: `Compliance Reviewer` (`albert`) or `Brand Manager` (`sebin`)
+
+### How to Execute:
+1. After submitting a draft from `/review`, navigate to [`/approvals`](http://localhost:3000/approvals).
+2. Click **"Review & Decide"** on the pending campaign submission.
+3. Select **"Approve with Documented Exception"**:
+   * Exception Category: `Contextual Marketing Exemption`
+   * Reason: *"Approved for limited regional pilot campaign under VP sign-off."*
+   * Click **Confirm Decision**.
+4. Navigate to [`/audit`](http://localhost:3000/audit).
+5. Click **"Verify Hash Chain Integrity"**.
+
+### ✅ Expected Output:
+* **Approvals Receipt**: An official **Cryptographic Review Receipt** (`RCPT-...`) is issued containing:
+  * SHA-256 Content Hash
+  * Rulebook Version
+  * Approver Signature
+  * LLM Model Disclosure (`Qwen/Qwen2.5-7B-Instruct` or local model metadata)
+* **HMAC Audit Chain**:
+  * New block appended to the ledger with event type `APPROVAL_DECISION` and `EXCEPTION_RECORDED`.
+  * **Chain Integrity**: Displays **"100% Cryptographically Verified &bull; Zero Broken Links &bull; Zero Tampering Detected"**.
