@@ -2,8 +2,15 @@
  * FIDELIS / CANON Brand Governance Platform - Frontend API Client
  */
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+function normalizeApiBaseUrl(rawUrl?: string): string {
+  let url = (rawUrl || "http://127.0.0.1:8000/api/v1").trim().replace(/\/+$/, "");
+  if (!url.endsWith("/api/v1")) {
+    url = `${url}/api/v1`;
+  }
+  return url;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
 export interface User {
   id: string;

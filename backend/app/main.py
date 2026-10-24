@@ -64,6 +64,7 @@ async def security_and_observability_middleware(request: Request, call_next):
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
+# Primary API routes under /api/v1
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(rulebooks_router, prefix=settings.API_V1_STR)
 app.include_router(facts_router, prefix=settings.API_V1_STR)
@@ -72,6 +73,16 @@ app.include_router(approvals_router, prefix=settings.API_V1_STR)
 app.include_router(governance_router, prefix=settings.API_V1_STR)
 app.include_router(audit_router, prefix=settings.API_V1_STR)
 app.include_router(assets_router, prefix=settings.API_V1_STR)
+
+# Fallback mounts for requests that omit the /api/v1 prefix
+app.include_router(auth_router, include_in_schema=False)
+app.include_router(rulebooks_router, include_in_schema=False)
+app.include_router(facts_router, include_in_schema=False)
+app.include_router(reviews_router, include_in_schema=False)
+app.include_router(approvals_router, include_in_schema=False)
+app.include_router(governance_router, include_in_schema=False)
+app.include_router(audit_router, include_in_schema=False)
+app.include_router(assets_router, include_in_schema=False)
 
 @app.api_route('/health', methods=['GET', 'HEAD'], tags=['Health'])
 def health_check():
