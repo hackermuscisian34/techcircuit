@@ -198,36 +198,4 @@ This guide details every test fixture in the [`test files/`](file:///c:/Users/bi
 ### ✅ Expected Output:
 * **Certificate Validation**: The JSON file matches the verified SHA-256 hash (`d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5`) with an intact HMAC-SHA256 signature and approver timestamp.
 * **Tamper-Evident Header**: The text file contains an immutable verification header for legal and publishing defense. Any alteration to words or whitespace invalidates the cryptographic checksum.
-  
-## 8. Test Scenario H: Revision Changes and Approval Invalidation
 
-- **Target Pages**: [`/review`](http://localhost:3000/review) → [`/approvals`](http://localhost:3000/approvals)
-- **Persona**: `Content Creator` (`adhithya`) and `Compliance Reviewer` (`albert`)
-- **Test Fixture**: `11_Aurora_Revision_Change_Test.txt`
-
-### Suggested Test Fixture Content
-
-Aurora Desk helps teams organize project work in team workspaces.
-The standard plan costs $12 per user per month when billed monthly.
-In an internal test, 24 participants completed the onboarding task in under 10 minutes.
-
-### How to Execute:
-
-1. Ensure the active rulebook and certified facts are available.
-2. Open `/review` and upload or paste the fixture content.
-3. Run **"Run Full Compliance & Fact Audit"** and confirm that the supported claims are recognized.
-4. If the draft is compliant, submit it for sign-off.
-5. Open `/approvals` and complete the normal approval process in a test workspace.
-6. Return to the source draft and make a meaningful content change, such as changing `$12` to `$9` or adding an unsupported guarantee.
-7. Save or resubmit the revised draft and check whether the earlier approval is still shown as valid.
-
-### Expected Output:
-
-- The changed draft is treated as a new revision, or its previous approval is marked stale or invalid.
-- A fresh compliance audit and, where applicable, a new approval are required.
-- The earlier receipt and content hash remain associated with the original approved content.
-- The audit history records the revision or invalidation event if supported by the implementation.
-
-**Pass condition:** Modified content cannot inherit an approval or certificate issued for a different content hash.
-
-**Implementation note:** If editing after submission is not supported, create a new submission with modified text and compare its content hash and approval status with the original.
