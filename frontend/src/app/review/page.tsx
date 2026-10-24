@@ -19,7 +19,8 @@ import {
   ThumbsUp,
   RotateCcw,
   Trash2,
-  Download
+  Download,
+  Copy
 } from "lucide-react";
 import { api, ReviewResult } from "@/lib/api";
 
@@ -60,6 +61,16 @@ export default function ReviewStudioPage() {
   const [isSignOffComplete, setIsSignOffComplete] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [remediatedItems, setRemediatedItems] = useState<Record<string, boolean>>({});
+  const [outputViewTab, setOutputViewTab] = useState<"clean" | "diff" | "original">("clean");
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopyCleanText = () => {
+    const textToCopy = evaluationPayload?.suggested_full_text || editorialText;
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -700,6 +711,113 @@ export default function ReviewStudioPage() {
             </div>
           </div>
 
+          {/* Corrected Content & Diff Studio */}
+          <div className="p-6 rounded-3xl bg-white border border-[#F4E2D3] shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F4E2D3]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#027A48] bg-[#EDFDF5] px-2.5 py-0.5 rounded-full border border-[#A6F4C5]">
+                    Live Review Output
+                  </span>
+                  <h3 className="text-base sm:text-lg font-black text-[#201815]">
+                    Corrected Content &amp; Diff Studio
+                  </h3>
+                </div>
+                <p className="text-xs text-[#7C6A5E] mt-0.5">
+                  View the final brand-compliant output, inspect the tracked changes diff, or copy clean text.
+                </p>
+              </div>
+
+              {/* View Tabs */}
+              <div className="inline-flex p-1 rounded-xl bg-[#FFF9F3] border border-[#F4E2D3] self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setOutputViewTab("clean")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    outputViewTab === "clean"
+                      ? "bg-white text-[#D95D0D] shadow-xs border border-[#FDBA74]"
+                      : "text-[#7C6A5E] hover:text-[#201815]"
+                  }`}
+                >
+                  ✨ Corrected Output
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputViewTab("diff")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    outputViewTab === "diff"
+                      ? "bg-white text-[#D95D0D] shadow-xs border border-[#FDBA74]"
+                      : "text-[#7C6A5E] hover:text-[#201815]"
+                  }`}
+                >
+                  🔍 Tracked Changes (Diff)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputViewTab("original")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    outputViewTab === "original"
+                      ? "bg-white text-[#D95D0D] shadow-xs border border-[#FDBA74]"
+                      : "text-[#7C6A5E] hover:text-[#201815]"
+                  }`}
+                >
+                  📄 Original Source
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: Clean Corrected Output */}
+            {outputViewTab === "clean" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#027A48] font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>All approved brand terms and verified facts applied</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyCleanText}
+                    className="px-3 py-1.5 rounded-lg border border-[#F1E1D4] bg-[#FFF9F3] hover:bg-[#FFEAD9] text-[#201815] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                  >
+                    {isCopied ? <Check className="w-3.5 h-3.5 text-[#027A48]" /> : <Copy className="w-3.5 h-3.5 text-[#D95D0D]" />}
+                    <span>{isCopied ? "Copied to Clipboard!" : "Copy Clean Text"}</span>
+                  </button>
+                </div>
+                <div className="p-5 rounded-2xl bg-[#FAFAFA] border border-[#EBEBEB] text-xs leading-relaxed text-[#201815] font-sans whitespace-pre-wrap max-h-96 overflow-y-auto">
+                  {evaluationPayload.suggested_full_text || editorialText || "No corrected text generated."}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: Tracked Changes Diff */}
+            {outputViewTab === "diff" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-[#7C6A5E]">
+                  <span><span className="text-[#B42318] line-through font-bold">Red struck text</span> was removed · <span className="text-[#027A48] font-bold underline">Green text</span> was inserted.</span>
+                </div>
+                {evaluationPayload.diff_html ? (
+                  <div
+                    className="p-5 rounded-2xl bg-[#FFFBF7] border border-[#F4E2D3] text-xs leading-relaxed text-[#201815] font-sans max-h-96 overflow-y-auto"
+                    dangerouslySetInnerHTML={{ __html: evaluationPayload.diff_html }}
+                  />
+                ) : (
+                  <div className="p-4 rounded-xl bg-[#FFF9F3] text-xs text-[#7C6A5E] italic">
+                    No tracked differences detected between the input and rulebook specifications.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: Original Source */}
+            {outputViewTab === "original" && (
+              <div className="space-y-2">
+                <div className="p-5 rounded-2xl bg-[#FFFBF7] border border-[#F4E2D3] text-xs leading-relaxed text-[#7C6A5E] font-sans whitespace-pre-wrap max-h-96 overflow-y-auto">
+                  {editorialText || (activeUploadFile ? `[Text extracted from uploaded file: ${activeUploadFile.name}]` : "Original document text")}
+                </div>
+              </div>
+            )}
+          </div>
+
           {evaluationPayload.findings && evaluationPayload.findings.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -822,27 +940,6 @@ export default function ReviewStudioPage() {
             </div>
           )}
 
-          {evaluationPayload.diff_html && (
-            <div className="p-6 rounded-3xl bg-white border border-[#F4E2D3] shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-extrabold text-[#201815]">
-                    Tracked Changes Diff (Original vs Corrected)
-                  </h3>
-                  <p className="text-xs text-[#7C6A5E]">
-                    Red indicates removed violations; green indicates approved replacements.
-                  </p>
-                </div>
-                <span className="text-[11px] font-extrabold text-[#027A48] bg-[#EDFDF5] px-2.5 py-1 rounded-full border border-[#A6F4C5]">
-                  Surgical Fix
-                </span>
-              </div>
-              <div
-                className="p-4 rounded-2xl bg-[#FFFBF7] border border-[#F4E2D3] text-xs leading-relaxed text-[#201815] font-sans"
-                dangerouslySetInnerHTML={{ __html: evaluationPayload.diff_html }}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
