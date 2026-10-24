@@ -121,3 +121,4 @@ npm run build
 | **Executive Approver** | Biju | `approver@fidelis.example` | `Password123!` |
 
 *(Full role descriptions and RBAC permissions are documented in `USER_ROLES_AND_CREDENTIALS.md`).*
+The Server Connection History feature maintains a detailed log of previous SSH sessions, including server IP addresses, connection timestamps, executed commands, execution status, and error messages. It allows users to review past activities, troubleshoot connection issues, track command execution, and export logs for auditing. This feature improves transparency, simplifies debugging, and makes managing multiple servers more efficient and secure.
