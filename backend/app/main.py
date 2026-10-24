@@ -73,7 +73,7 @@ app.include_router(governance_router, prefix=settings.API_V1_STR)
 app.include_router(audit_router, prefix=settings.API_V1_STR)
 app.include_router(assets_router, prefix=settings.API_V1_STR)
 
-@app.get('/health', tags=['Health'])
+@app.api_route('/health', methods=['GET', 'HEAD'], tags=['Health'])
 def health_check():
     active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') and settings.LLM_PROVIDER != 'ollama'
     active_provider = 'huggingface' if active_is_hf else 'ollama'
@@ -120,6 +120,6 @@ def readiness_probe():
         'storage': 'accessible',
     }
 
-@app.get('/', tags=['Root'])
+@app.api_route('/', methods=['GET', 'HEAD'], tags=['Root'])
 def root():
     return {'name': settings.PROJECT_NAME, 'version': settings.VERSION, 'docs': f'{settings.API_V1_STR}/docs', 'description': 'CANON: The Open-Source Brand Governance Compiler.'}
