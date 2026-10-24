@@ -17,6 +17,10 @@ router = APIRouter(prefix='/rulebooks', tags=['Brand Rulebook & Compiler'])
 @router.get('/active/', response_model=RulebookResponse)
 def get_active_rulebook(current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
     rulebook = db.query(Rulebook).filter(Rulebook.workspace_id == current_user.workspace_id, Rulebook.status == 'ACTIVE').first()
+    if not rulebook and current_user.workspace_id == settings.DEFAULT_WORKSPACE_ID:
+        from app.seed.synthetic_brand import seed_database
+        seed_database(db=db)
+        rulebook = db.query(Rulebook).filter(Rulebook.workspace_id == current_user.workspace_id, Rulebook.status == 'ACTIVE').first()
     if not rulebook:
         raise HTTPException(status_code=404, detail='Active rulebook not found for this workspace.')
     rules = db.query(Rule).filter(Rule.rulebook_id == rulebook.id).all()
@@ -30,7 +34,11 @@ def get_active_rulebook(current_user: User=Depends(get_current_user), db: Sessio
     return RulebookResponse(id=rulebook.id, workspace_id=rulebook.workspace_id, version=rulebook.version, title=rulebook.title, description=rulebook.description, status=rulebook.status, created_at=rulebook.created_at, updated_at=rulebook.updated_at, rules_count=len(rules), rules=rule_responses)
 
 @router.post('/compile')
-async def compile_guideline_document(text: Optional[str]=Form(None), file: Optional[UploadFile]=File(None)):
+async def compile_guideline_document(
+    text: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(get_current_user),
+):
     guideline_content = ''
     source_filename = 'Pasted Guidelines'
     if file:
@@ -57,7 +65,7 @@ async def publish_rulebook_version(
     title: Optional[str] = Form(None),
     version: Optional[str] = Form(None),
     rules_json: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles('ADMIN', 'BRAND_MANAGER')),
     db: Session = Depends(get_db)
 ):
     import json

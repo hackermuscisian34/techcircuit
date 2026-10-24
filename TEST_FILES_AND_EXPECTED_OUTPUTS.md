@@ -16,6 +16,9 @@ This guide details every test fixture in the [`test files/`](file:///c:/Users/bi
 | **`05_Aurora_Accessibility_Checklist`** | `.pdf` / `.txt` | [`/guide`](http://localhost:3000/guide) | Operational Checklist & Accessibility Rule Reference |
 | **`07_Aurora_Logo_Compliant.png`** | `.png` (300x300) | [`/assets`](http://localhost:3000/assets) | Compliant 1:1 Aspect Ratio Vector Logo Asset |
 | **`08_Aurora_Logo_Distorted_Stretched.png`** | `.png` (520x140) | [`/assets`](http://localhost:3000/assets) or [`/review`](http://localhost:3000/review) | Visual Audit Warning for Aspect Ratio Distortion |
+| **`09_Aurora_Compliant_Campaign_Draft_CERTIFIED.txt`** | `.txt` | [`/review`](http://localhost:3000/review) & [`/approvals`](http://localhost:3000/approvals) | Approved Document with Cryptographic SHA-256 Security Header |
+| **`09_Aurora_Tamper_Proof_Certificate.json`** | `.json` | [`/approvals`](http://localhost:3000/approvals) & [`/audit`](http://localhost:3000/audit) | Machine-Verifiable Cryptographic Brand Attestation Certificate |
+| **`10_Aurora_Audit_Ledger_Export.json`** | `.json` | [`/audit`](http://localhost:3000/audit) | Complete Immutable HMAC-SHA256 Audit Trail Export |
 
 ---
 
@@ -173,3 +176,26 @@ This guide details every test fixture in the [`test files/`](file:///c:/Users/bi
 * **HMAC Audit Chain**:
   * New block appended to the ledger with event type `APPROVAL_DECISION` and `EXCEPTION_RECORDED`.
   * **Chain Integrity**: Displays **"100% Cryptographically Verified &bull; Zero Broken Links &bull; Zero Tampering Detected"**.
+
+---
+
+## 7. Test Scenario G: Tamper-Proof Document & Certificate Verification
+
+* **Target Pages**: [`/approvals`](http://localhost:3000/approvals) & [`/audit`](http://localhost:3000/audit)
+* **Test Files**:
+  * `09_Aurora_Compliant_Campaign_Draft_CERTIFIED.txt`
+  * `09_Aurora_Tamper_Proof_Certificate.json`
+  * `10_Aurora_Audit_Ledger_Export.json`
+
+### How to Execute:
+1. Open [`/approvals`](http://localhost:3000/approvals) upon issuing an approval stamp.
+2. In the golden certificate banner, click:
+   * **"Certificate (.json)"** &rarr; Downloads the official cryptographic attestation certificate (`FIDELIS-CERTIFICATE-RCPT-....json`).
+   * **"Document (.txt)"** &rarr; Downloads the final certified copy with its embedded tamper-evident SHA-256 header.
+3. Open [`/audit`](http://localhost:3000/audit).
+4. Click **"Export Tamper-Proof Ledger"** &rarr; Downloads the complete verifiable block sequence (`FIDELIS-TAMPER-PROOF-LEDGER-....json`).
+
+### ✅ Expected Output:
+* **Certificate Validation**: The JSON file matches the verified SHA-256 hash (`d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5`) with an intact HMAC-SHA256 signature and approver timestamp.
+* **Tamper-Evident Header**: The text file contains an immutable verification header for legal and publishing defense. Any alteration to words or whitespace invalidates the cryptographic checksum.
+

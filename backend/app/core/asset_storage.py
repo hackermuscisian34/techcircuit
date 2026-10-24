@@ -24,7 +24,19 @@ def sanitize_filename(filename: str) -> str:
     return FilenameFilter.clean(filename)
 
 class SvgSecuritySanitizer:
-    SCRUB_OPERATIONS = [(re.compile('<!DOCTYPE[^>]*>', re.IGNORECASE), ''), (re.compile('<!ENTITY[^>]*>', re.IGNORECASE), ''), (re.compile('<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>', re.IGNORECASE), ''), (re.compile('<foreignObject\\b[^<]*(?:(?!<\\/foreignObject>)<[^<]*)*<\\/foreignObject>', re.IGNORECASE), ''), (re.compile('\\bon\\w+\\s*=\\s*(?:\'[^\']*\'|\\"[^\\"]*\\"|[^\\s>]+)', re.IGNORECASE), ''), (re.compile('href\\s*=\\s*[\\"\']javascript:[^\\"\']*[\\"\']', re.IGNORECASE), 'href="#"'), (re.compile('xlink:href\\s*=\\s*[\\"\']javascript:[^\\"\']*[\\"\']', re.IGNORECASE), 'xlink:href="#"')]
+    SCRUB_OPERATIONS = [
+        (re.compile(r'<!DOCTYPE[^>]*>', re.IGNORECASE), ''),
+        (re.compile(r'<!ENTITY[^>]*>', re.IGNORECASE), ''),
+        (re.compile(r'<\?xml-stylesheet[^>]*\?>', re.IGNORECASE), ''),
+        (re.compile(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', re.IGNORECASE), ''),
+        (re.compile(r'<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>', re.IGNORECASE), ''),
+        (re.compile(r'<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>', re.IGNORECASE), ''),
+        (re.compile(r'<embed\b[^>]*>', re.IGNORECASE), ''),
+        (re.compile(r'<foreignObject\b[^<]*(?:(?!<\/foreignObject>)<[^<]*)*<\/foreignObject>', re.IGNORECASE), ''),
+        (re.compile(r'\bon\w+\s*=\s*(?:\'[^\']*\'|"[^"]*"|[^\s>]+)', re.IGNORECASE), ''),
+        (re.compile(r'href\s*=\s*["\']\s*(?:javascript|data):[^"\']*["\']', re.IGNORECASE), 'href="#"'),
+        (re.compile(r'xlink:href\s*=\s*["\']\s*(?:javascript|data):[^"\']*["\']', re.IGNORECASE), 'xlink:href="#"'),
+    ]
 
     @classmethod
     def purify(cls, raw_vector_bytes: bytes) -> bytes:
@@ -45,10 +57,15 @@ class StorageLocator:
     @staticmethod
     def resolve_destination(tenant_id: str, resource_key: str, leaf_filename: str) -> Path:
         safe_tenant = FilenameFilter.clean(tenant_id)
+        safe_resource = FilenameFilter.clean(resource_key)
         safe_leaf = FilenameFilter.clean(leaf_filename)
-        tenant_envelope = Path(settings.STORAGE_DIR) / 'assets' / safe_tenant
+        storage_root = Path(settings.STORAGE_DIR).resolve()
+        tenant_envelope = storage_root / 'assets' / safe_tenant
         tenant_envelope.mkdir(parents=True, exist_ok=True)
-        return tenant_envelope / f'{resource_key}_{safe_leaf}'
+        dest_path = (tenant_envelope / f'{safe_resource}_{safe_leaf}').resolve()
+        if not dest_path.is_relative_to(storage_root):
+            raise ValueError('Path traversal attempt detected in storage destination.')
+        return dest_path
 
 def get_asset_storage_path(workspace_id: str, asset_id: str, filename: str) -> Path:
     return StorageLocator.resolve_destination(workspace_id, asset_id, filename)

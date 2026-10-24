@@ -1,0 +1,72 @@
+{
+  "$schema": "https://fidelis.guard/schema/tamper-proof-certificate-v1.json",
+  "certificate_id": "RCPT-AURORA-2026-001",
+  "attestation_standard": "FIDELIS / CANON Cryptographic Brand Governance Attestation v1.0",
+  "issued_at": "2026-10-23T22:35:00Z",
+  "workspace": {
+    "id": "ws-aurora-001",
+    "name": "Aurora Labs Brand Governance"
+  },
+  "submission": {
+    "title": "Aurora Compliant Campaign Draft",
+    "source_file": "06_Aurora_Compliant_Campaign_Draft.txt",
+    "content_format": "TEXT_MARKETING_COLLATERAL",
+    "character_count": 575,
+    "sha256_content_hash": "d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5",
+    "status": "APPROVED_FOR_PUBLIC_DISTRIBUTION"
+  },
+  "governance_rulebook": {
+    "version": "1.1.0",
+    "title": "Aurora Labs Brand Guidelines",
+    "active_rules_evaluated": 8,
+    "blocking_violations": 0,
+    "advisory_notes": 0
+  },
+  "verified_claims_audit": [
+    {
+      "claim_text": "Aurora Desk supports team workspaces",
+      "fact_code": "FACT-001",
+      "status": "SUPPORTED",
+      "verification_tier": "CERTIFIED_FACT_VAULT",
+      "valid_until": "2027-06-30T00:00:00Z"
+    },
+    {
+      "claim_text": "$12 per user per month when billed monthly",
+      "fact_code": "FACT-002",
+      "status": "SUPPORTED",
+      "verification_tier": "CERTIFIED_FACT_VAULT",
+      "valid_until": "2026-12-31T00:00:00Z"
+    },
+    {
+      "claim_text": "24 participants completed the initial onboarding walkthrough in under 10 minutes",
+      "fact_code": "FACT-003",
+      "status": "SUPPORTED",
+      "verification_tier": "CERTIFIED_FACT_VAULT",
+      "valid_until": "2027-01-31T00:00:00Z"
+    },
+    {
+      "claim_text": "Aurora Labs currently has 18 team members",
+      "fact_code": "FACT-005",
+      "status": "SUPPORTED",
+      "verification_tier": "CERTIFIED_FACT_VAULT",
+      "valid_until": "2026-11-30T00:00:00Z"
+    }
+  ],
+  "approver": {
+    "user_id": "usr-approver-01",
+    "full_name": "Biju",
+    "role": "APPROVER",
+    "email": "biju@apexdynamics.example",
+    "decision": "APPROVED",
+    "decision_timestamp": "2026-10-23T22:35:00Z"
+  },
+  "cryptographic_seal": {
+    "ledger_protocol": "HMAC-SHA256 Append-Only Blockchain-Style Ledger",
+    "sequence_number": 8,
+    "payload_hash": "63fc5f8be7882299b8e8f8ce347dd9485b3bc857d90d79f22ae31a86fe156a50",
+    "prev_block_hash": "2ea16c9e0d16c52a7837016d84950275d314811a2f646eef88ad4a2f8c5b81a1",
+    "event_hash": "b47df83c92176b509ef1df5d43eec4b36015cae6f8ad689531ca1188319fbb1c",
+    "tampering_detected": false,
+    "signature_state": "SEALED_IMMUTABLE"
+  }
+}

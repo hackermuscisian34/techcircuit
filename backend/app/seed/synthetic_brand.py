@@ -4,6 +4,7 @@ from app.db.session import SessionLocal, Base, engine
 from app.db.models import Workspace, User, Rulebook, Rule, RuleTestCase, Fact, AuditEvent, ProposedAmendment
 from app.core.security import hash_password
 from app.core.audit_chain import calculate_sha256, calculate_event_hash, GENESIS_PREV_HASH
+from app.config import settings
 WORKSPACE_ID = 'ws-apexdynamics-001'
 DEMO_USERS = [{'id': 'usr-admin-01', 'email': 'alfred@apexdynamics.example', 'full_name': 'Alfred Biju', 'role': 'ADMIN', 'password': 'Password123!'}, {'id': 'usr-manager-01', 'email': 'sebin@apexdynamics.example', 'full_name': 'Sebin Sabu', 'role': 'BRAND_MANAGER', 'password': 'Password123!'}, {'id': 'usr-reviewer-01', 'email': 'albert@apexdynamics.example', 'full_name': 'Albert Biju', 'role': 'AUTHORISED_REVIEWER', 'password': 'Password123!'}, {'id': 'usr-creator-01', 'email': 'adhithya@apexdynamics.example', 'full_name': 'Adhithya Biju', 'role': 'CREATOR', 'password': 'Password123!'}, {'id': 'usr-approver-01', 'email': 'biju@apexdynamics.example', 'full_name': 'Biju', 'role': 'APPROVER', 'password': 'Password123!'}]
 DEMO_RULES = [{'rule_code': 'TERM-01', 'title': "Prohibition of Deprecated 'Apex Cloud' Naming", 'category': 'Brand Naming', 'description': "The product was rebranded to 'Apex Core'. Use of 'Apex Cloud' is strictly prohibited in all external communications.", 'source_quote': "Apex Core is our official enterprise engine. Under no circumstances should the deprecated name 'Apex Cloud' be used in marketing, sales, or public collateral.", 'source_section': 'Section 2.1: Product Naming Architecture (Page 6)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'Deploy mission-critical workloads seamlessly on Apex Core.', 'fail_example': 'Apex Cloud provides unprecedented reliability for enterprises.', 'pattern': '\\bApex\\s+Cloud\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'NAME-01', 'title': 'Product Brand Orthography & Capitalization', 'category': 'Brand Naming', 'description': 'The product brand name is strictly written as CloudPlatform with capital C and P, without internal spaces. Lowercase or spaced spellings are prohibited.', 'source_quote': 'The product brand name is strictly written as CloudPlatform with capital C and P, without internal spaces.', 'source_section': 'Section 2.2: Orthography and Capitalization (Page 6)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'CloudPlatform powers next-generation enterprise hardware and telemetry.', 'fail_example': 'cloudplatform delivers real-time cluster telemetry.', 'pattern': '\\b(?:cloudplatform|Cloud\\s+platform|cloud\\s+platform)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'TM-01', 'title': 'Mandatory Trademark Designation on First Reference', 'category': 'Brand Naming & Trademarks', 'description': 'CloudPlatform™ must display the trademark symbol upon its initial occurrence in all customer-facing collateral.', 'source_quote': 'CloudPlatform™ and MasterBrand® must display their respective trademark designations upon their initial occurrence in all customer-facing collateral.', 'source_section': 'Section 2.4: Trademark & Legal Nomenclature (Page 7)', 'severity': 'WARNING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'CloudPlatform™ introduces next-generation computing architectures.', 'fail_example': 'CloudPlatform without trademark symbol.', 'pattern': '\\bCloudPlatform(?!\\u2122)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'LOGO-01', 'title': 'Logo Clearspace & Isolation Perimeter', 'category': 'Logo & Visual Identity', 'description': 'The primary brand mark must always be surrounded by an isolation boundary equal to the height of the primary mark. Never crowd or place elements within this zone.', 'source_quote': 'The primary brand mark must always be surrounded by an isolation boundary equal to the height of the primary mark. Never crowd or touch the logo border.', 'source_section': 'Section 3.1: Logo Isolation & Clear Space Standards (Page 8)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'The official logo is placed with standard isolation clearance.', 'fail_example': 'crowded logo with overlapping elements', 'pattern': '\\b(?:crowded\\s+logo|unapproved\\s+logo\\s+variant|altered\\s+logomark)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'LOGO-02', 'title': 'Forbidden Logo Alterations & Distortions', 'category': 'Logo & Visual Identity', 'description': 'Logomarks must only appear in approved single-tone White, Onyx Black, or Brand Terracotta. Custom drop shadows, bevels, or unapproved gradients on the logo are strictly prohibited.', 'source_quote': 'Never apply drop shadows, 3D extrusions, or unauthorized color fills to the official logomark.', 'source_section': 'Section 3.3: Forbidden Logo Alterations (Page 10)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'Monochrome logo printed on matte hardware packaging.', 'fail_example': 'distorted logo with unapproved styling', 'pattern': '\\b(?:distorted\\s+logo|recolored\\s+logo|drop\\s+shadow\\s+on\\s+logo)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'TERM-02', 'title': "Prohibition of Absolute '100% Uptime Guaranteed' Claims", 'category': 'Product Claims', 'description': 'Never claim 100% uptime or absolute reliability. Refer only to our certified 99.98% availability SLA.', 'source_quote': "We never claim '100% uptime guaranteed'. All system reliability communications must cite our certified SLA of 99.98% availability.", 'source_section': 'Section 3.4: Reliability and Legal Guarantees (Page 11)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'Engineered for 99.98% SLA availability under high enterprise throughput.', 'fail_example': 'Enjoy uninterrupted service with 100% uptime guaranteed.', 'pattern': '\\b(?:100%\\s+uptime\\s+guaranteed|guaranteed\\s+100%\\s+uptime)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'CLAIM-01', 'title': 'Substantiation of Comparative and Superlative Claims', 'category': 'Product Claims', 'description': "Claims of being 'fastest' or 'industry-leading' require verifiable certified benchmark citations in footnote or accompanying text.", 'source_quote': "Comparative claims including 'fastest' or 'market-leading' must have documented third-party benchmark proof before publication.", 'source_section': 'Section 4.3: Comparative Claims & Regulatory Compliance (Page 14)', 'severity': 'BLOCKING', 'enforcement_type': 'DETERMINISTIC', 'pass_example': 'Rated top quartile in API throughput according to the 2026 Cloud Benchmark Report.', 'fail_example': 'Our platform is the undisputed fastest platform in the world.', 'pattern': '\\b(?:fastest\\s+platform\\s+in\\s+the\\s+world|undisputed\\s+leader)\\b', 'ambiguity_status': 'CLEAR'}, {'rule_code': 'TONE-01', 'title': 'Measured, Authoritative Brand Voice for Product Collateral', 'category': 'Brand Voice', 'description': 'Communications must remain professional, measured, and objective. Avoid sensationalized clickbait, desperation, or multi-exclamation marks.', 'source_quote': 'Our brand voice is confident, precise, and measured. Avoid sensationalized clickbait, multiple exclamation marks, or excessive emoji flourishes.', 'source_section': 'Section 1.2: Brand Voice Principles (Page 3)', 'severity': 'WARNING', 'enforcement_type': 'SEMANTIC_AI', 'pass_example': 'Our distributed infrastructure delivers consistent latency across global regions.', 'fail_example': "You WON'T BELIEVE how crazy fast our platform is!!! Don't miss out 🚀🔥", 'pattern': None, 'ambiguity_status': 'CLEAR'}, {'rule_code': 'AMBIG-01', 'title': 'General Brand Aesthetic & Premium Finish (Demonstration Ambiguous Rule)', 'category': 'Visual', 'description': 'Visual layouts should feel modern, clean, sleek, and high quality.', 'source_quote': 'Marketing headers and visuals should always appear sleek, clean, and high quality.', 'source_section': 'Section 5.1: General Visual Principles (Page 18)', 'severity': 'ADVISORY', 'enforcement_type': 'SEMANTIC_AI', 'pass_example': 'A well-balanced layout with ample white space.', 'fail_example': 'Cluttered graphics with conflicting elements.', 'pattern': None, 'ambiguity_status': 'AMBIGUOUS'}]
@@ -16,6 +17,7 @@ def seed_database(db: Session=None, is_test: bool=False):
         db = SessionLocal()
         close_db = True
     try:
+        is_prod = settings.ENVIRONMENT.lower() in ('production', 'prod')
         ws = db.query(Workspace).filter(Workspace.id == WORKSPACE_ID).first()
         if not ws:
             ws = Workspace(id=WORKSPACE_ID, name='Brand Governance Workspace', slug='brand-workspace')
@@ -25,34 +27,54 @@ def seed_database(db: Session=None, is_test: bool=False):
             ws.name = 'Brand Governance Workspace'
             ws.slug = 'brand-workspace'
             db.flush()
-        allowed_user_ids = [u['id'] for u in DEMO_USERS]
-        for u_data in DEMO_USERS:
-            existing_user = db.query(User).filter((User.id == u_data['id']) | (User.email == u_data['email'])).first()
-            if not existing_user:
-                new_user = User(id=u_data['id'], workspace_id=WORKSPACE_ID, email=u_data['email'], full_name=u_data['full_name'], role=u_data['role'], hashed_password=hash_password(u_data['password']))
-                db.add(new_user)
-            else:
-                existing_user.id = u_data['id']
-                existing_user.email = u_data['email']
-                existing_user.full_name = u_data['full_name']
-                existing_user.role = u_data['role']
-                existing_user.hashed_password = hash_password(u_data['password'])
-        db.flush()
-        db.query(User).filter(~User.id.in_(allowed_user_ids)).delete(synchronize_session=False)
-        db.flush()
-        if is_test:
-            rb = Rulebook(id='rb-apexdynamics-v1', workspace_id=WORKSPACE_ID, version='1.0.0', title='ApexDynamics Brand Guard', description='Test rulebook', status='ACTIVE')
+
+        if is_prod and not settings.ENABLE_DEMO_ACCOUNTS and not is_test:
+            # In strict production without demo accounts, do not seed demo credentials
+            pass
+        else:
+            allowed_user_ids = [u['id'] for u in DEMO_USERS]
+            for u_data in DEMO_USERS:
+                existing_user = db.query(User).filter((User.id == u_data['id']) | (User.email == u_data['email'])).first()
+                if not existing_user:
+                    new_user = User(id=u_data['id'], workspace_id=WORKSPACE_ID, email=u_data['email'], full_name=u_data['full_name'], role=u_data['role'], hashed_password=hash_password(u_data['password']))
+                    db.add(new_user)
+                else:
+                    existing_user.id = u_data['id']
+                    existing_user.email = u_data['email']
+                    existing_user.full_name = u_data['full_name']
+                    existing_user.role = u_data['role']
+                    existing_user.hashed_password = hash_password(u_data['password'])
+            db.flush()
+            if not is_prod:
+                db.query(User).filter(~User.id.in_(allowed_user_ids)).delete(synchronize_session=False)
+                db.flush()
+        existing_rb = db.query(Rulebook).filter(Rulebook.workspace_id == WORKSPACE_ID, Rulebook.status == 'ACTIVE').first()
+        if not existing_rb:
+            rb = Rulebook(id='rb-apexdynamics-v1', workspace_id=WORKSPACE_ID, version='1.0.0', title='ApexDynamics Brand Guard', description='Active enterprise brand rulebook', status='ACTIVE')
             db.add(rb)
             db.flush()
             for r_data in DEMO_RULES:
                 r = Rule(rulebook_id=rb.id, rule_code=r_data['rule_code'], title=r_data['title'], category=r_data['category'], description=r_data['description'], source_quote=r_data['source_quote'], source_section=r_data.get('source_section', 'Guidelines'), severity=r_data['severity'], enforcement_type=r_data.get('enforcement_type', 'DETERMINISTIC'), pass_example=r_data.get('pass_example'), fail_example=r_data.get('fail_example'), ambiguity_status='CLEAR', status='ACTIVE')
                 db.add(r)
                 db.flush()
-                for tc in r_data.get('test_cases', []):
-                    db.add(RuleTestCase(rule_id=r.id, input_text=tc['input_text'], expected_verdict=tc['expected_verdict'], rationale=tc['rationale']))
-            for f_data in DEMO_FACTS:
-                db.add(Fact(workspace_id=WORKSPACE_ID, fact_code=f_data['fact_code'], subject=f_data['subject'], approved_statement=f_data['approved_statement'], normalized_value=f_data.get('normalized_value'), normalized_unit=f_data.get('normalized_unit'), source_document=f_data['source_document'], source_quote=f_data['source_quote'], owner_name=f_data['owner_name'], owner_email=f_data['owner_email'], valid_from=f_data['valid_from'], valid_until=f_data['valid_until'], status=f_data['status']))
+                tc_list = r_data.get('test_cases', [])
+                if not tc_list:
+                    if r_data.get('pass_example'):
+                        tc_list.append({'input_text': r_data['pass_example'], 'expected_verdict': 'PASS', 'rationale': f"Valid compliance example for {r_data['rule_code']}"})
+                    if r_data.get('fail_example'):
+                        tc_list.append({'input_text': r_data['fail_example'], 'expected_verdict': 'FAIL', 'rationale': f"Violation sample for {r_data['rule_code']}"})
+                for tc in tc_list:
+                    db.add(RuleTestCase(rule_id=r.id, input_text=tc['input_text'], expected_verdict=tc['expected_verdict'], explanation=tc.get('explanation') or tc.get('rationale', 'Test rationale')))
             db.flush()
+
+        for f_data in DEMO_FACTS:
+            existing_fact = db.query(Fact).filter(Fact.workspace_id == WORKSPACE_ID, Fact.fact_code == f_data['fact_code']).first()
+            if not existing_fact:
+                db.add(Fact(workspace_id=WORKSPACE_ID, fact_code=f_data['fact_code'], subject=f_data['subject'], approved_statement=f_data['approved_statement'], normalized_value=f_data.get('normalized_value'), normalized_unit=f_data.get('normalized_unit'), source_document=f_data['source_document'], source_quote=f_data['source_quote'], owner_name=f_data['owner_name'], owner_email=f_data['owner_email'], valid_from=f_data.get('valid_from'), valid_until=f_data.get('valid_until'), status=f_data.get('status', 'ACTIVE')))
+        db.flush()
+
+        existing_event = db.query(AuditEvent).filter(AuditEvent.workspace_id == WORKSPACE_ID).first()
+        if not existing_event:
             import json
             now = datetime.now(timezone.utc)
             genesis_payload = {'action': 'GENESIS_BLOCK_INITIALIZED', 'workspace': WORKSPACE_ID, 'version': '1.0.0'}

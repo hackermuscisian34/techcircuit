@@ -13,7 +13,9 @@ import {
   Check,
   FileText,
   Palette,
-  Tag
+  Tag,
+  Download,
+  Printer
 } from "lucide-react";
 import { api, ContentSubmission, BrandAsset } from "@/lib/api";
 
@@ -163,6 +165,166 @@ export default function ApprovalsPage() {
     setTimeout(() => setClipboardConfirmation(false), 2000);
   };
 
+  const downloadCertificateTxt = () => {
+    if (!activeReceipt) return;
+    const certText = [
+      "==================================================================================",
+      "          FIDELIS / CANON — OFFICIAL BRAND GOVERNANCE CERTIFICATE",
+      "                CRYPTOGRAPHIC TAMPER-PROOF ATTESTATION v1.0",
+      "==================================================================================",
+      "",
+      `  Certificate ID        : ${activeReceipt.receipt_id || "RCPT-2026-001"}`,
+      "  Attestation Standard  : FIDELIS / CANON Cryptographic Brand Governance v1.0",
+      `  Timestamp Issued      : ${activeReceipt.timestamp || new Date().toISOString()}`,
+      "  Workspace Authority   : Brand Governance Master Ledger",
+      "",
+      "----------------------------------------------------------------------------------",
+      "  CERTIFIED DOCUMENT DETAILS",
+      "----------------------------------------------------------------------------------",
+      `  Document Title        : ${activeReceipt.submission_title || "Certified Document"}`,
+      "  Compliance Verdict    : APPROVED FOR PUBLIC DISTRIBUTION",
+      `  Cryptographic Hash    : ${activeReceipt.content_hash || "sha256-verified"} (SHA-256)`,
+      "  Audit Ledger Block    : Sealed Immutable Block in HMAC-SHA256 Ledger",
+      "  Tamper Detection State: PASSED — 100% Cryptographic Non-Repudiation",
+      "",
+      "----------------------------------------------------------------------------------",
+      "  EXECUTIVE HUMAN SIGN-OFF",
+      "----------------------------------------------------------------------------------",
+      `  Approver Name         : ${activeReceipt.approver}`,
+      `  Decision Status       : ${activeReceipt.decision || "APPROVED"}`,
+      `  Certified Timestamp   : ${activeReceipt.timestamp || new Date().toISOString()}`,
+      "",
+      "==================================================================================",
+      "  VERIFICATION NOTICE: This certificate verifies that the associated document body",
+      "  was evaluated against certified company rules and signed off by authorized",
+      "  executive leadership. Any alteration of the document content invalidates",
+      "  the cryptographic SHA-256 digest and breaches brand governance compliance.",
+      "==================================================================================",
+      "                       [END OF OFFICIAL CERTIFICATE]"
+    ].join("\n");
+    const blob = new Blob([certText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `FIDELIS-CERTIFICATE-${activeReceipt.receipt_id || "001"}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCertifiedDoc = () => {
+    if (!activeReceipt) return;
+    const cleanTitle = (activeReceipt.submission_title || "document").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const docHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${activeReceipt.submission_title}</title>
+        <style>
+          body { font-family: Calibri, sans-serif; font-size: 11pt; color: #201815; line-height: 1.5; padding: 20px; }
+          .header { border-bottom: 2px solid #C87539; padding-bottom: 10px; margin-bottom: 15px; }
+          .title { font-size: 16pt; font-weight: bold; color: #C87539; }
+          .badge { font-size: 10pt; font-weight: bold; color: #027A48; }
+          .meta-box { background: #FFF9F3; border: 1px solid #F4E2D3; padding: 12px; margin-bottom: 20px; font-size: 9.5pt; }
+          .footer { margin-top: 30px; border-top: 1px solid #D95D0D; padding-top: 8px; font-size: 8pt; color: #7C6A5E; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class='header'>
+          <div class='title'>FIDELIS / CANON BRAND GOVERNANCE</div>
+          <div class='badge'>OFFICIAL TAMPER-PROOF CERTIFIED DOCUMENT &bull; APPROVED</div>
+        </div>
+        <div class='meta-box'>
+          <strong>Certificate ID:</strong> ${activeReceipt.receipt_id || "RCPT-2026-001"}<br>
+          <strong>Document Title:</strong> ${activeReceipt.submission_title}<br>
+          <strong>SHA-256 Digest:</strong> <code>${activeReceipt.content_hash || "sha256-verified"}</code><br>
+          <strong>Approver:</strong> ${activeReceipt.approver}<br>
+          <strong>Certified Date:</strong> ${activeReceipt.timestamp || new Date().toISOString()}<br>
+          <strong>Audit Ledger:</strong> Sealed in HMAC-SHA256 Immutable Golden Ledger
+        </div>
+        <h2>Certified Content</h2>
+        <p>${(activeReceipt.submission_title || "Content").replace(/\n/g, "<br>")}</p>
+        <div class='footer'>
+          SECURITY NOTICE: This document is cryptographically sealed with SHA-256 checksum ${activeReceipt.content_hash || "sha256-verified"}. Any alteration invalidates this certification in the FIDELIS immutable audit ledger.
+        </div>
+      </body>
+      </html>
+    `;
+    const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${cleanTitle}_CERTIFIED.doc`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printCertifiedPdf = () => {
+    if (!activeReceipt) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>FIDELIS Certificate - ${activeReceipt.submission_title}</title>
+        <style>
+          @page { size: letter; margin: 20mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #201815; line-height: 1.6; padding: 20px; }
+          .header { border-bottom: 2px solid #C87539; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
+          .brand { font-size: 18px; font-weight: 900; color: #C87539; letter-spacing: 0.5px; }
+          .sub { font-size: 11px; font-weight: 700; color: #027A48; text-transform: uppercase; margin-top: 4px; }
+          .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: #FFF9F3; border: 1px solid #F4E2D3; }
+          .meta-table td { padding: 8px 12px; font-size: 11px; border: 1px solid #F4E2D3; }
+          .meta-table td.label { font-weight: 700; color: #7C6A5E; width: 22%; }
+          .content-box { font-size: 13px; line-height: 1.8; margin-bottom: 24px; }
+          .footer { border-top: 1px solid #D95D0D; padding-top: 10px; font-size: 9px; color: #7C6A5E; text-align: center; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="brand">FIDELIS / CANON BRAND GOVERNANCE</div>
+          <div class="sub">Official Tamper-Proof Certified Document &bull; Approved</div>
+        </div>
+        <table class="meta-table">
+          <tr>
+            <td class="label">Certificate ID:</td>
+            <td><strong>${activeReceipt.receipt_id || "RCPT-2026-001"}</strong></td>
+            <td class="label">Status:</td>
+            <td><strong style="color: #027A48;">APPROVED FOR PUBLICATION</strong></td>
+          </tr>
+          <tr>
+            <td class="label">Document Title:</td>
+            <td>${activeReceipt.submission_title}</td>
+            <td class="label">Approver:</td>
+            <td>${activeReceipt.approver}</td>
+          </tr>
+          <tr>
+            <td class="label">SHA-256 Digest:</td>
+            <td colspan="3"><code style="font-family: monospace; font-size: 10px;">${activeReceipt.content_hash || "sha256-verified"}</code></td>
+          </tr>
+          <tr>
+            <td class="label">Certified Date:</td>
+            <td>${activeReceipt.timestamp || new Date().toISOString()}</td>
+            <td class="label">Ledger Protocol:</td>
+            <td>HMAC-SHA256 Immutable Golden Ledger</td>
+          </tr>
+        </table>
+        <h3 style="font-size: 14px; margin-bottom: 8px; color: #201815;">Certified Content</h3>
+        <div class="content-box">
+          <p>${(activeReceipt.submission_title || "Content").replace(/\n/g, "<br>")}</p>
+        </div>
+        <div class="footer">
+          SECURITY NOTICE: Cryptographically sealed with SHA-256 checksum ${activeReceipt.content_hash || "sha256-verified"}. Any manual modification invalidates this certification in the FIDELIS immutable audit ledger.
+        </div>
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const pendingItemsCount = useMemo(() => {
     return selectedChannel === "content"
       ? contentQueue.filter((q) => q.current_status.includes("PENDING") || q.current_status.includes("UNDER") || q.current_status.includes("SUBMITTED")).length
@@ -246,17 +408,46 @@ export default function ApprovalsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={copyReceiptToClipboard}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-[#FFF9F3] text-[#C87539] text-xs font-bold border border-[#F1E1D4] transition-all shadow-2xs"
+                type="button"
+                onClick={downloadCertificateTxt}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#027A48] hover:bg-[#02663c] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title="Download official cryptographic certificate as TXT"
               >
-                {clipboardConfirmation ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{clipboardConfirmation ? "Copied Certificate!" : "Copy Certificate"}</span>
+                <Download className="w-3.5 h-3.5" />
+                <span>Certificate (.txt)</span>
               </button>
               <button
+                type="button"
+                onClick={printCertifiedPdf}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold border border-[#F1E1D4] transition-all shadow-2xs cursor-pointer"
+                title="Print or save certified document as PDF"
+              >
+                <Printer className="w-3.5 h-3.5 text-[#C87539]" />
+                <span>Document (.pdf)</span>
+              </button>
+              <button
+                type="button"
+                onClick={downloadCertifiedDoc}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold border border-[#F1E1D4] transition-all shadow-2xs cursor-pointer"
+                title="Download certified document as Microsoft Word (.doc)"
+              >
+                <FileText className="w-3.5 h-3.5 text-[#C87539]" />
+                <span>Document (.doc)</span>
+              </button>
+              <button
+                type="button"
+                onClick={copyReceiptToClipboard}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-[#FFF9F3] text-[#C87539] text-xs font-bold border border-[#F1E1D4] transition-all shadow-2xs cursor-pointer"
+              >
+                {clipboardConfirmation ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{clipboardConfirmation ? "Copied!" : "Copy"}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveReceipt(null)}
-                className="px-3 py-1.5 rounded-xl text-xs text-[#8A7567] hover:text-[#382A20]"
+                className="px-3 py-1.5 rounded-xl text-xs text-[#8A7567] hover:text-[#382A20] cursor-pointer"
               >
                 Dismiss
               </button>

@@ -18,7 +18,10 @@ ALLOWED_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPR
 @router.get('/submissions', response_model=List[ContentSubmissionResponse])
 @router.get('/submissions/', response_model=List[ContentSubmissionResponse])
 def get_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
-    submissions = db.query(ContentSubmission).filter(ContentSubmission.workspace_id == current_user.workspace_id, ContentSubmission.current_status.in_(['SUBMITTED', 'CHANGES_REQUESTED'])).order_by(ContentSubmission.created_at.desc()).all()
+    submissions = db.query(ContentSubmission).filter(
+        ContentSubmission.workspace_id == current_user.workspace_id,
+        ContentSubmission.current_status.in_(['SUBMITTED', 'CHANGES_REQUESTED', 'IN_REVIEW', 'AWAITING_APPROVAL'])
+    ).order_by(ContentSubmission.created_at.desc()).all()
     results = []
     for s in submissions:
         res = ContentSubmissionResponse.model_validate(s)
@@ -32,20 +35,46 @@ def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate
     if not sub:
         raise HTTPException(status_code=404, detail='Submission not found.')
     approver = current_user
-    if approver.id == sub.creator_id and approver.role != 'ADMIN':
+    if approver.id == sub.creator_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Creators are not permitted to approve their own submissions.')
-    if payload.decision == 'APPROVED_WITH_EXCEPTION' and (not payload.reason):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Documented reason is mandatory when approving with an exception.')
+
+    decision_upper = payload.decision.upper().strip()
+    valid_decisions = {'APPROVED', 'APPROVED_WITH_EXCEPTION', 'REJECTED', 'CHANGES_REQUESTED', 'BLOCKED'}
+    if decision_upper not in valid_decisions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid decision '{payload.decision}'. Allowed decisions: {', '.join(sorted(valid_decisions))}.")
+
     latest_version = db.query(ContentVersion).filter(ContentVersion.submission_id == sub.id).order_by(ContentVersion.version_number.desc()).first()
     if not latest_version:
         raise HTTPException(status_code=400, detail='No content version available to approve.')
-    decision_record = ApprovalDecision(content_version_id=latest_version.id, approver_id=approver.id, decision=payload.decision, reason=payload.reason, exception_category=payload.exception_category)
+
+    findings = db.query(Finding).filter(Finding.content_version_id == latest_version.id).all()
+    unoverridden_blocking = [f for f in findings if f.severity == 'BLOCKING' and f.user_decision != 'OVERRIDDEN']
+
+    if decision_upper == 'APPROVED' and unoverridden_blocking:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot approve submission with {len(unoverridden_blocking)} un-overridden BLOCKING finding(s). Must resolve findings or approve with documented exception (APPROVED_WITH_EXCEPTION)."
+        )
+
+    if decision_upper == 'APPROVED_WITH_EXCEPTION' and (not payload.reason or not payload.reason.strip()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Documented reason is mandatory when approving with an exception.')
+
+    if sub.current_status == 'BLOCKED' and decision_upper == 'APPROVED':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Submission is BLOCKED. It cannot be approved without a documented exception (APPROVED_WITH_EXCEPTION).')
+
+    decision_record = ApprovalDecision(
+        content_version_id=latest_version.id,
+        approver_id=approver.id,
+        decision=decision_upper,
+        reason=payload.reason,
+        exception_category=payload.exception_category
+    )
     db.add(decision_record)
-    sub.current_status = payload.decision
+    sub.current_status = decision_upper
     db.flush()
+
     receipt = None
-    if payload.decision in ['APPROVED', 'APPROVED_WITH_EXCEPTION']:
-        findings = db.query(Finding).filter(Finding.content_version_id == latest_version.id).all()
+    if decision_upper in ['APPROVED', 'APPROVED_WITH_EXCEPTION']:
         verified_count = sum((1 for f in findings if f.verification_status == 'VERIFIED'))
         advisory_count = sum((1 for f in findings if f.severity == 'ADVISORY'))
         active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface')
@@ -57,7 +86,7 @@ def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate
             content_hash=latest_version.content_hash,
             rulebook_version=latest_version.rulebook_version,
             approver_id=approver.id,
-            final_verdict=payload.decision,
+            final_verdict=decision_upper,
             verified_findings_count=verified_count,
             advisory_count=advisory_count,
             model_disclosure={
@@ -70,9 +99,31 @@ def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate
         )
         db.add(receipt)
         db.flush()
+
     db.commit()
-    record_audit_event(db=db, workspace_id=sub.workspace_id, event_type='APPROVAL_DECISION', actor_id=approver.id, actor_role=approver.role, details={'submission_id': sub.id, 'version_id': latest_version.id, 'decision': payload.decision, 'reason': payload.reason, 'content_hash': latest_version.content_hash, 'receipt_id': receipt.id if receipt else None})
-    return {'submission_id': sub.id, 'decision': payload.decision, 'approver': approver.full_name, 'status': sub.current_status, 'receipt_id': receipt.id if receipt else None, 'content_hash': latest_version.content_hash}
+    record_audit_event(
+        db=db,
+        workspace_id=sub.workspace_id,
+        event_type='APPROVAL_DECISION',
+        actor_id=approver.id,
+        actor_role=approver.role,
+        details={
+            'submission_id': sub.id,
+            'version_id': latest_version.id,
+            'decision': decision_upper,
+            'reason': payload.reason,
+            'content_hash': latest_version.content_hash,
+            'receipt_id': receipt.id if receipt else None
+        }
+    )
+    return {
+        'submission_id': sub.id,
+        'decision': decision_upper,
+        'approver': approver.full_name,
+        'status': sub.current_status,
+        'receipt_id': receipt.id if receipt else None,
+        'content_hash': latest_version.content_hash
+    }
 
 @router.get('/assets', response_model=List[BrandAssetResponse])
 def get_asset_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
@@ -84,6 +135,11 @@ def submit_asset_approval_decision(asset_id: str, payload: BrandAssetApproval, c
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail='Brand asset not found.')
+    if asset.uploader_id and current_user.id == asset.uploader_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Uploaders are not permitted to approve their own brand assets."
+        )
     decision_upper = payload.decision.upper().strip()
     if decision_upper not in ['APPROVED', 'REJECTED']:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be either 'APPROVED' or 'REJECTED'.")

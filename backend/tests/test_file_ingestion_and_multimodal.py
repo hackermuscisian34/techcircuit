@@ -86,6 +86,9 @@ def test_oversized_upload_returns_413(client: TestClient, creator_headers, monke
     assert 'exceeds maximum permitted size' in response.json()['detail']
 
 def test_extract_facts_from_document_text(client: TestClient, creator_headers):
+    token_mgr = create_access_token(data={'sub': 'usr-manager-01', 'email': 'sebin@apexdynamics.example', 'role': 'BRAND_MANAGER', 'workspace_id': WORKSPACE_ID})
+    manager_headers = {'Authorization': f'Bearer {token_mgr}'}
+
     report_text = 'Q3 2026 Infrastructure Report.\nProduction infrastructure demonstrated 99.98% uptime SLA in Q3.\nSub-45ms roundtrip latency was achieved across all European nodes.\nThe system serves over 50,000 enterprise customers globally.\nThe platform completed SOC 2 Type II compliance audit successfully.'
     res = client.post('/api/v1/facts/extract', headers=creator_headers, data={'text': report_text})
     assert res.status_code == 200
@@ -94,6 +97,25 @@ def test_extract_facts_from_document_text(client: TestClient, creator_headers):
     fact_codes = [f['fact_code'] for f in data['candidate_facts']]
     assert any(('SLA' in c for c in fact_codes))
     fact_to_certify = data['candidate_facts'][0]
-    create_res = client.post('/api/v1/facts', headers=creator_headers, json={'fact_code': fact_to_certify['fact_code'], 'subject': fact_to_certify['subject'], 'approved_statement': fact_to_certify['approved_statement'], 'normalized_value': fact_to_certify['normalized_value'], 'normalized_unit': fact_to_certify['normalized_unit'], 'source_document': 'Q3 2026 Infrastructure Report', 'source_quote': fact_to_certify['source_quote'], 'owner_name': 'Test Creator', 'owner_email': 'creator@canon.example', 'valid_until': fact_to_certify['valid_until']})
+
+    fact_payload = {
+        'fact_code': fact_to_certify['fact_code'],
+        'subject': fact_to_certify['subject'],
+        'approved_statement': fact_to_certify['approved_statement'],
+        'normalized_value': fact_to_certify['normalized_value'],
+        'normalized_unit': fact_to_certify['normalized_unit'],
+        'source_document': 'Q3 2026 Infrastructure Report',
+        'source_quote': fact_to_certify['source_quote'],
+        'owner_name': 'Sebin Sabu',
+        'owner_email': 'sebin@apexdynamics.example',
+        'valid_until': fact_to_certify['valid_until']
+    }
+
+    # Verify that unprivileged CREATOR cannot certify facts into the vault
+    creator_res = client.post('/api/v1/facts', headers=creator_headers, json=fact_payload)
+    assert creator_res.status_code == 403
+
+    # Verify that BRAND_MANAGER can certify facts into the vault
+    create_res = client.post('/api/v1/facts', headers=manager_headers, json=fact_payload)
     assert create_res.status_code == 200
     assert create_res.json()['fact_code'] == fact_to_certify['fact_code']

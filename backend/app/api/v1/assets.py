@@ -182,6 +182,11 @@ def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_us
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
+    if asset.uploader_id and current_user.id == asset.uploader_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Uploaders are not permitted to approve their own brand assets."
+        )
     decision_upper = payload.decision.upper().strip()
     if decision_upper not in ['APPROVED', 'REJECTED']:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be either 'APPROVED' or 'REJECTED'.")
@@ -248,14 +253,23 @@ def download_asset(
     auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
     db: Session = Depends(get_db)
 ):
-    current_user = get_optional_current_user(auth=auth, token=token, db=db)
-    query = db.query(BrandAsset).filter(BrandAsset.id == asset_id)
-    if current_user:
-        query = query.filter(BrandAsset.workspace_id == current_user.workspace_id)
-    asset = query.first()
+    current_user = get_current_user(auth=auth, token=token, db=db)
+    asset = db.query(BrandAsset).filter(
+        BrandAsset.id == asset_id,
+        BrandAsset.workspace_id == current_user.workspace_id
+    ).first()
     if not asset or not asset.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Asset file not found.')
     full_path = Path(asset.file_path) if Path(asset.file_path).is_absolute() else Path(settings.BASE_DIR) / asset.file_path
+    try:
+        resolved_path = full_path.resolve()
+        base_dir_resolved = Path(settings.BASE_DIR).resolve()
+        if not resolved_path.is_relative_to(base_dir_resolved):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied: path traversal attempt.')
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid file path.')
     if not full_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Stored asset file is missing from disk.')
     media_type = asset.mime_type or 'application/octet-stream'
@@ -274,14 +288,23 @@ def preview_asset(
     auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
     db: Session = Depends(get_db)
 ):
-    current_user = get_optional_current_user(auth=auth, token=token, db=db)
-    query = db.query(BrandAsset).filter(BrandAsset.id == asset_id)
-    if current_user:
-        query = query.filter(BrandAsset.workspace_id == current_user.workspace_id)
-    asset = query.first()
+    current_user = get_current_user(auth=auth, token=token, db=db)
+    asset = db.query(BrandAsset).filter(
+        BrandAsset.id == asset_id,
+        BrandAsset.workspace_id == current_user.workspace_id
+    ).first()
     if not asset or not asset.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Asset file not found.')
     full_path = Path(asset.file_path) if Path(asset.file_path).is_absolute() else Path(settings.BASE_DIR) / asset.file_path
+    try:
+        resolved_path = full_path.resolve()
+        base_dir_resolved = Path(settings.BASE_DIR).resolve()
+        if not resolved_path.is_relative_to(base_dir_resolved):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Access denied: path traversal attempt.')
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid file path.')
     if not full_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Stored asset file is missing.')
     media_type = asset.mime_type or 'application/octet-stream'

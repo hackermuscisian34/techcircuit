@@ -1,0 +1,52 @@
+==================================================================================
+          FIDELIS / CANON — OFFICIAL BRAND GOVERNANCE CERTIFICATE
+                CRYPTOGRAPHIC TAMPER-PROOF ATTESTATION v1.0
+==================================================================================
+
+  Certificate ID        : RCPT-AURORA-2026-001
+  Attestation Standard  : FIDELIS / CANON Cryptographic Brand Governance v1.0
+  Timestamp Issued      : 2026-10-23T22:35:00Z
+  Workspace Authority   : Aurora Labs Governance (ws-aurora-001)
+
+----------------------------------------------------------------------------------
+  CERTIFIED DOCUMENT DETAILS
+----------------------------------------------------------------------------------
+  Document Title        : Aurora Compliant Campaign Draft
+  Source Format         : Marketing Copy / Distribution Collateral
+  Character Count       : 575 characters
+  Cryptographic Hash    : d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5 (SHA-256)
+  Compliance Verdict    : APPROVED FOR PUBLIC DISTRIBUTION
+  Governance Rulebook   : Aurora Labs Brand Guidelines (v1.1.0)
+  Blocking Violations   : 0 (Zero Tolerance Passed)
+  Advisory Notes        : 0
+
+----------------------------------------------------------------------------------
+  VERIFIED BRAND VAULT CITATIONS (CLAIMS LEDGER)
+----------------------------------------------------------------------------------
+  • [FACT-001] Aurora Desk supports team workspaces
+    Verification: CERTIFIED • Valid through 2027-06-30
+  • [FACT-002] $12 per user per month when billed monthly
+    Verification: CERTIFIED • Valid through 2026-12-31
+  • [FACT-003] 24 participants onboarding walkthrough in under 10 minutes
+    Verification: CERTIFIED • Valid through 2027-01-31
+  • [FACT-005] Aurora Labs has 18 team members
+    Verification: CERTIFIED • Valid through 2026-11-30
+
+----------------------------------------------------------------------------------
+  EXECUTIVE HUMAN SIGN-OFF
+----------------------------------------------------------------------------------
+  Approver ID           : usr-approver-01
+  Approver Name         : Biju (Executive Approver • usr-approver-01)
+  Decision Status       : APPROVED
+  Cryptographic Seal    : Block #8 in HMAC-SHA256 Immutable Audit Ledger
+  Chain Link Previous   : 2ea16c9e0d16c52a7837016d84950275d314811a2f646eef88ad4a2f8c5b81a1
+  Chain Link Current    : b47df83c92176b509ef1df5d43eec4b36015cae6f8ad689531ca1188319fbb1c
+  Tamper Detection State: PASSED — 100% Tamper-Proof Cryptographic Non-Repudiation
+
+==================================================================================
+  VERIFICATION NOTICE: This certificate verifies that the associated document body
+  was evaluated against certified company rules and signed off by authorized
+  executive leadership. Any alteration of the document content invalidates
+  the cryptographic SHA-256 digest and breaches brand governance compliance.
+==================================================================================
+                       [END OF OFFICIAL CERTIFICATE]

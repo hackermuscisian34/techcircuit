@@ -9,7 +9,8 @@ import {
   Clock,
   User,
   Check,
-  Copy
+  Copy,
+  Download
 } from "lucide-react";
 import { api, AuditEvent, AuditVerificationResult } from "../../lib/api";
 
@@ -63,6 +64,33 @@ export default function AuditTrailPage() {
     setTimeout(() => setActiveCopiedHash(null), 1500);
   };
 
+  const exportLedgerJson = async () => {
+    try {
+      const data = await api.exportAuditLedger();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `FIDELIS-TAMPER-PROOF-LEDGER-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      const fallback = {
+        ledger_title: "FIDELIS / CANON Cryptographic Brand Governance Golden Ledger",
+        exported_at: new Date().toISOString(),
+        total_blocks: ledgerEntries.length,
+        blocks: ledgerEntries,
+      };
+      const blob = new Blob([JSON.stringify(fallback, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `FIDELIS-TAMPER-PROOF-LEDGER-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -81,14 +109,26 @@ export default function AuditTrailPage() {
           </p>
         </div>
 
-        <button
-          onClick={runChainAudit}
-          disabled={inProgressVerification}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#C87539] hover:bg-[#b0632b] text-white text-xs font-bold transition-all shadow-sm hover:shadow-md disabled:opacity-50"
-        >
-          <ShieldCheck className={`w-4 h-4 ${inProgressVerification ? "animate-spin" : ""}`} />
-          <span>{inProgressVerification ? "Checking Ledger Integrity..." : "⚡ Verify Audit Integrity"}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={exportLedgerJson}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-[#FFF9F3] text-[#382A20] border border-[#F1E1D4] text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            title="Download full immutable HMAC ledger in JSON format"
+          >
+            <Download className="w-4 h-4 text-[#C87539]" />
+            <span>Export Tamper-Proof Ledger</span>
+          </button>
+
+          <button
+            onClick={runChainAudit}
+            disabled={inProgressVerification}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#C87539] hover:bg-[#b0632b] text-white text-xs font-bold transition-all shadow-sm hover:shadow-md disabled:opacity-50 cursor-pointer"
+          >
+            <ShieldCheck className={`w-4 h-4 ${inProgressVerification ? "animate-spin" : ""}`} />
+            <span>{inProgressVerification ? "Checking Ledger Integrity..." : "⚡ Verify Audit Integrity"}</span>
+          </button>
+        </div>
       </div>
 
       <div className="p-5 rounded-3xl bg-white border border-[#F1E1D4] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

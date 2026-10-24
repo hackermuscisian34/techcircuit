@@ -76,8 +76,13 @@ class ClaimLedgerEngine:
                     existing_texts.add(segment)
         return aggregated
 
-    def verify_claims_against_vault(self, db: Session, workspace_id: str, claims: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        active_facts = db.query(Fact).filter(Fact.workspace_id == workspace_id).all()
+    def verify_claims_against_vault(self, db: Session, workspace_id: str, claims: List[Dict[str, Any]], brand_name: Optional[str] = None, region: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = db.query(Fact).filter(Fact.workspace_id == workspace_id)
+        if brand_name:
+            query = query.filter((Fact.brand_name == brand_name) | (Fact.brand_name == 'Apex Dynamics') | (Fact.brand_name.is_(None)))
+        if region and region != 'GLOBAL':
+            query = query.filter((Fact.region == region) | (Fact.region == 'GLOBAL') | (Fact.region.is_(None)))
+        active_facts = query.all()
         now_utc = datetime.now(timezone.utc)
         return [VaultCorroborator.corroborate_statement(entry, active_facts, now_utc) for entry in claims]
 claim_ledger = ClaimLedgerEngine()

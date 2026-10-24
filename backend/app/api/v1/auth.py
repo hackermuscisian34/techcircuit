@@ -18,7 +18,11 @@ LOGIN_ALIASES = {'admin': 'alfred@apexdynamics.example', 'admin@apexdynamics.exa
 @router.post('/login', response_model=Token)
 def login(request: LoginRequest, db: Session=Depends(get_db)):
     search_query = request.email.strip().lower()
-    target_email = LOGIN_ALIASES.get(search_query, search_query)
+    is_prod = settings.ENVIRONMENT.lower() in ('production', 'prod')
+    if is_prod or not settings.ENABLE_DEMO_ACCOUNTS:
+        target_email = search_query
+    else:
+        target_email = LOGIN_ALIASES.get(search_query, search_query)
     user = db.query(User).filter((func.lower(User.email) == target_email) | (func.lower(User.email) == search_query)).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Incorrect email or password', headers={'WWW-Authenticate': 'Bearer'})
@@ -78,6 +82,11 @@ class SwitchPersonaRequest(BaseModel):
 @router.post('/switch-persona', response_model=Token)
 @router.post('/switch-persona/', response_model=Token)
 def switch_persona(payload: SwitchPersonaRequest, db: Session = Depends(get_db)):
+    if settings.ENVIRONMENT.lower() in ('production', 'prod') or not settings.ENABLE_DEV_PERSONA_SWITCHING:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Persona switching is strictly disabled outside development mode."
+        )
     target_role = payload.role.strip().upper()
     role_email_map = {
         'ADMIN': 'alfred@apexdynamics.example',

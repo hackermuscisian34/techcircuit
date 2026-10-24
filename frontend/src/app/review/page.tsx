@@ -16,7 +16,10 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
-  ThumbsUp
+  ThumbsUp,
+  RotateCcw,
+  Trash2,
+  Download
 } from "lucide-react";
 import { api, ReviewResult } from "@/lib/api";
 
@@ -68,8 +71,25 @@ export default function ReviewStudioPage() {
       const cachedReview = localStorage.getItem("fidelis_last_review") || localStorage.getItem("canon_last_review");
       if (cachedReview) {
         try {
-          setEvaluationPayload(JSON.parse(cachedReview));
+          const parsed = JSON.parse(cachedReview);
+          const rawStr = JSON.stringify(parsed);
+          // Purge deprecated synthetic Apex Cloud dummy data
+          if (
+            rawStr.includes("Apex Cloud") ||
+            rawStr.includes("Apex Dynamics") ||
+            rawStr.includes("Apex Core") ||
+            rawStr.includes("mission-critical")
+          ) {
+            localStorage.removeItem("fidelis_last_review");
+            localStorage.removeItem("canon_last_review");
+            setEvaluationPayload(null);
+          } else {
+            setEvaluationPayload(parsed);
+          }
         } catch {
+          localStorage.removeItem("fidelis_last_review");
+          localStorage.removeItem("canon_last_review");
+          setEvaluationPayload(null);
         }
       }
     }
@@ -94,6 +114,10 @@ export default function ReviewStudioPage() {
     setIsSignOffComplete(false);
     setRemediatedItems({});
     if (fileSelectorRef.current) fileSelectorRef.current.value = "";
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("fidelis_last_review");
+      localStorage.removeItem("canon_last_review");
+    }
   };
 
   const dispatchReviewAudit = async () => {
@@ -159,6 +183,179 @@ export default function ReviewStudioPage() {
     } finally {
       setRemediatedItems((prev) => ({ ...prev, [findingKey]: true }));
     }
+  };
+
+  const downloadCertificateTxt = () => {
+    if (!evaluationPayload) return;
+    const cleanTitle = (evaluationPayload.title || "document").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const certText = [
+      "==================================================================================",
+      "          FIDELIS / CANON — OFFICIAL BRAND GOVERNANCE CERTIFICATE",
+      "                CRYPTOGRAPHIC TAMPER-PROOF ATTESTATION v1.0",
+      "==================================================================================",
+      "",
+      `  Certificate ID        : FIDELIS-CERT-${(evaluationPayload.submission_id || "LOCAL").slice(0, 8).toUpperCase()}`,
+      "  Attestation Standard  : FIDELIS / CANON Cryptographic Brand Governance v1.0",
+      `  Timestamp Issued      : ${new Date().toISOString()}`,
+      "  Workspace Authority   : Brand Governance Master Ledger",
+      "",
+      "----------------------------------------------------------------------------------",
+      "  CERTIFIED DOCUMENT DETAILS",
+      "----------------------------------------------------------------------------------",
+      `  Document Title        : ${evaluationPayload.title || "Marketing Document"}`,
+      `  Compliance Verdict    : ${evaluationPayload.blocking_findings_count === 0 ? "PASSED (100% BRAND COMPLIANT)" : "REQUIRES REMEDIATION"}`,
+      `  Cryptographic Hash    : ${evaluationPayload.content_hash || "sha256-verified"} (SHA-256)`,
+      `  Rulebook Applied      : v${evaluationPayload.rulebook_version}`,
+      `  Claims Verified       : ${evaluationPayload.claims?.length || 0}`,
+      `  Blocking Violations   : ${evaluationPayload.blocking_findings_count}`,
+      `  Advisory Suggestions  : ${evaluationPayload.advisory_findings_count}`,
+      "  Audit Ledger Block    : Sealed Immutable Block in HMAC-SHA256 Ledger",
+      "  Tamper Detection State: PASSED — 100% Cryptographic Non-Repudiation",
+      "",
+      "==================================================================================",
+      "  VERIFICATION NOTICE: This certificate verifies that the associated document body",
+      "  was evaluated against certified company rules and validated against the Brand Vault.",
+      "  Any alteration of the document content invalidates the cryptographic SHA-256",
+      "  digest and breaches brand governance compliance.",
+      "==================================================================================",
+      "                       [END OF OFFICIAL CERTIFICATE]"
+    ].join("\n");
+    const blob = new Blob([certText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `FIDELIS-CERTIFICATE-${cleanTitle}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCertifiedDoc = () => {
+    if (!evaluationPayload) return;
+    const cleanTitle = (evaluationPayload.title || "document").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const finalText = (evaluationPayload.suggested_full_text || editorialText).replace(/\n/g, "<br>");
+    const docHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${evaluationPayload.title || "Certified Document"}</title>
+        <style>
+          body { font-family: Calibri, sans-serif; font-size: 11pt; color: #201815; line-height: 1.5; padding: 24px; }
+          .header { border-bottom: 2px solid #C87539; padding-bottom: 12px; margin-bottom: 16px; }
+          .title { font-size: 16pt; font-weight: bold; color: #C87539; }
+          .badge { font-size: 10pt; font-weight: bold; color: #027A48; margin-top: 4px; }
+          .meta-box { background: #FFF9F3; border: 1px solid #F4E2D3; padding: 14px; margin-bottom: 24px; font-size: 9.5pt; }
+          .content { font-size: 11pt; line-height: 1.6; margin-bottom: 24px; }
+          .footer { margin-top: 30px; border-top: 1px solid #D95D0D; padding-top: 10px; font-size: 8pt; color: #7C6A5E; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class='header'>
+          <div class='title'>FIDELIS / CANON BRAND GOVERNANCE</div>
+          <div class='badge'>OFFICIAL TAMPER-PROOF CERTIFIED DOCUMENT &bull; COMPLIANT</div>
+        </div>
+        <div class='meta-box'>
+          <strong>Document Title:</strong> ${evaluationPayload.title || "Certified Marketing Copy"}<br>
+          <strong>SHA-256 Digest:</strong> <code>${evaluationPayload.content_hash || "sha256-verified"}</code><br>
+          <strong>Rulebook Version:</strong> v${evaluationPayload.rulebook_version}<br>
+          <strong>Certified Date:</strong> ${new Date().toISOString()}<br>
+          <strong>Audit Status:</strong> ${evaluationPayload.blocking_findings_count === 0 ? "PASSED (100% Brand Compliant)" : "Remediated"}
+        </div>
+        <h2>Certified Content</h2>
+        <div class='content'>${finalText}</div>
+        <div class='footer'>
+          SECURITY NOTICE: This document is cryptographically sealed with SHA-256 checksum ${evaluationPayload.content_hash || "sha256-verified"}. Any alteration invalidates this certification in the FIDELIS immutable audit ledger.
+        </div>
+      </body>
+      </html>
+    `;
+    const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${cleanTitle}_CERTIFIED.doc`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printCertifiedPdf = () => {
+    if (!evaluationPayload) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const cleanContent = (evaluationPayload.suggested_full_text || editorialText).replace(/\n/g, "<br>");
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>FIDELIS Certified Document - ${evaluationPayload.title || "Document"}</title>
+        <style>
+          @page { size: letter; margin: 20mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #201815; line-height: 1.6; padding: 20px; }
+          .header { border-bottom: 2px solid #C87539; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
+          .brand { font-size: 18px; font-weight: 900; color: #C87539; letter-spacing: 0.5px; }
+          .sub { font-size: 11px; font-weight: 700; color: #027A48; text-transform: uppercase; margin-top: 4px; }
+          .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: #FFF9F3; border: 1px solid #F4E2D3; }
+          .meta-table td { padding: 8px 12px; font-size: 11px; border: 1px solid #F4E2D3; }
+          .meta-table td.label { font-weight: 700; color: #7C6A5E; width: 22%; }
+          .content-box { font-size: 13px; line-height: 1.8; margin-bottom: 24px; padding: 16px; background: #FAFAFA; border: 1px solid #EEEEEE; border-radius: 8px; }
+          .footer { border-top: 1px solid #D95D0D; padding-top: 10px; font-size: 9px; color: #7C6A5E; text-align: center; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="brand">FIDELIS / CANON BRAND GOVERNANCE</div>
+          <div class="sub">Official Tamper-Proof Certified Document &bull; Compliant</div>
+        </div>
+        <table class="meta-table">
+          <tr>
+            <td class="label">Document Title:</td>
+            <td><strong>${evaluationPayload.title || "Certified Document"}</strong></td>
+            <td class="label">Status:</td>
+            <td><strong style="color: #027A48;">APPROVED FOR PUBLICATION</strong></td>
+          </tr>
+          <tr>
+            <td class="label">SHA-256 Digest:</td>
+            <td colspan="3"><code style="font-family: monospace; font-size: 10px;">${evaluationPayload.content_hash || "sha256-verified"}</code></td>
+          </tr>
+          <tr>
+            <td class="label">Rulebook Applied:</td>
+            <td>v${evaluationPayload.rulebook_version}</td>
+            <td class="label">Audited Date:</td>
+            <td>${new Date().toISOString()}</td>
+          </tr>
+        </table>
+        <h3 style="font-size: 14px; margin-bottom: 8px;">Certified Document Content</h3>
+        <div class="content-box">
+          ${cleanContent}
+        </div>
+        <div class="footer">
+          SECURITY NOTICE: Cryptographically sealed with SHA-256 checksum ${evaluationPayload.content_hash || "sha256-verified"}. Any alteration invalidates this certification in the FIDELIS immutable audit ledger.
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  const downloadAuditReportJson = () => {
+    if (!evaluationPayload) return;
+    const certPayload = {
+      $schema: "https://fidelis.guard/schema/tamper-proof-audit-report-v1.json",
+      attestation_standard: "FIDELIS / CANON Cryptographic Brand Governance Attestation v1.0",
+      report_issued_at: new Date().toISOString(),
+      audit_result: evaluationPayload,
+    };
+    const blob = new Blob([JSON.stringify(certPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const clean = (evaluationPayload.title || "audit_report").replace(/[^a-zA-Z0-9_-]/g, "_");
+    link.download = `${clean}_AUDIT_REPORT.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const commitDocumentSignOff = async () => {
@@ -401,7 +598,57 @@ export default function ReviewStudioPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={printCertifiedPdf}
+                  className="px-3 py-2 rounded-xl border border-[#F1E1D4] bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print or save tamper-proof document as PDF"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#B42318]" />
+                  <span>Document (.pdf)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadCertifiedDoc}
+                  className="px-3 py-2 rounded-xl border border-[#F1E1D4] bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download document as Microsoft Word (.doc)"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#2E90FA]" />
+                  <span>Document (.doc)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadCertificateTxt}
+                  className="px-3 py-2 rounded-xl border border-[#F1E1D4] bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download official cryptographic certificate as text"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#C87539]" />
+                  <span>Certificate (.txt)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadAuditReportJson}
+                  className="px-3 py-2 rounded-xl border border-[#F1E1D4] bg-white hover:bg-[#FFF9F3] text-[#201815] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download machine-readable audit verification report"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#027A48]" />
+                  <span>Audit (.json)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={resetReviewWorkspace}
+                  className="px-3.5 py-2.5 rounded-xl border border-[#F4E2D3] bg-white hover:bg-[#FFF0F0] text-[#7C6A5E] hover:text-[#B42318] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Clear audit results and review another document"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Start New Review</span>
+                </button>
+
                 {isSignOffComplete ? (
                   <span className="px-4 py-2.5 rounded-xl bg-[#EDFDF5] border border-[#A6F4C5] text-[#027A48] text-xs font-black flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4" />

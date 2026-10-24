@@ -104,7 +104,22 @@ def check_wcag_contrast(fg_hex: str, bg_hex: str, is_large_text: bool=False) -> 
     score = WcagColorMetrics.contrast(fg_hex, bg_hex)
     bound = 3.0 if is_large_text else 4.5
     valid = score >= bound
-    return {'foreground': fg_hex, 'background': bg_hex, 'contrast_ratio': score, 'required_ratio': bound, 'passes_wcag_aa': valid, 'level': 'AA' if valid else 'FAIL'}
+    suggested_alternative = None
+    if not valid:
+        try:
+            bg_lum = WcagColorMetrics.relative_luminance(WcagColorMetrics.parse_hex(bg_hex))
+            suggested_alternative = '#000000' if bg_lum > 0.5 else '#FFFFFF'
+        except Exception:
+            suggested_alternative = '#FFFFFF'
+    return {
+        'foreground': fg_hex,
+        'background': bg_hex,
+        'contrast_ratio': score,
+        'required_ratio': bound,
+        'passes_wcag_aa': valid,
+        'level': 'AA' if valid else 'FAIL',
+        'suggested_accessible_color': suggested_alternative
+    }
 
 def color_distance_rgb(hex1: str, hex2: str) -> float:
     return WcagColorMetrics.distance(hex1, hex2)
@@ -155,7 +170,20 @@ def validate_logo_dimensions(width: float, height: float, required_ratio: float=
     actual = round(width / height, 2)
     distorted = abs(actual - required_ratio) > ratio_tolerance
     undersized = height < min_height_px
-    return {'width': width, 'height': height, 'actual_ratio': actual, 'required_ratio': required_ratio, 'is_distorted': distorted, 'is_undersized': undersized, 'passes_spec': not distorted and (not undersized), 'clearspace_margin_px': round(height * 0.5, 1)}
+    ratio_diff = round(abs(actual - required_ratio), 2)
+    dev_pct = round(abs(actual - required_ratio) / required_ratio * 100, 1)
+    return {
+        'width': width,
+        'height': height,
+        'actual_ratio': actual,
+        'required_ratio': required_ratio,
+        'ratio_difference': ratio_diff,
+        'deviation_percent': dev_pct,
+        'is_distorted': distorted,
+        'is_undersized': undersized,
+        'passes_spec': not distorted and (not undersized),
+        'clearspace_margin_px': round(height * 0.5, 1)
+    }
 
 def check_trademark_compliance(text: str, master_brand: str='ApexDynamics', product_lines: Optional[List[str]]=None) -> List[Dict[str, Any]]:
     lines = product_lines or ['Apex Core', 'Apex Pulse', 'Apex Studio']

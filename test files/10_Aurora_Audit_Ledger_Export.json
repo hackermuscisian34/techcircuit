@@ -1,0 +1,128 @@
+{
+  "ledger_title": "FIDELIS / CANON Tamper-Evident Brand Governance Golden Ledger",
+  "workspace_id": "ws-aurora-001",
+  "exported_at": "2026-10-23T22:36:00Z",
+  "exported_by": {
+    "user_id": "usr-admin-01",
+    "name": "Alfred Biju",
+    "role": "ADMIN"
+  },
+  "verification_summary": {
+    "is_valid": true,
+    "total_events": 8,
+    "verified_events": 8,
+    "broken_event_id": null,
+    "message": "Official Seal INTACT: 100% Tamper-Proof Cryptographic Verification Passed."
+  },
+  "ledger_blocks": [
+    {
+      "sequence_number": 1,
+      "event_type": "GENESIS_INITIALIZATION",
+      "actor_id": "usr-admin-01",
+      "actor_role": "ADMIN",
+      "payload_hash": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
+      "prev_event_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "current_event_hash": "f48c0892c90e29bca63a5ef59a0f4a8b79237db87541295b719468bfb36fba92",
+      "timestamp": "2026-10-23T15:00:00Z",
+      "details": {
+        "action": "WORKSPACE_GENESIS_INITIALIZED",
+        "workspace": "ws-aurora-001"
+      }
+    },
+    {
+      "sequence_number": 2,
+      "event_type": "RULEBOOK_COMPILED",
+      "actor_id": "usr-manager-01",
+      "actor_role": "BRAND_MANAGER",
+      "payload_hash": "37bc9d84610a0df27e089204051ac1a2b97dc3f4c6e94e5a95f90c37f093ec88",
+      "prev_event_hash": "f48c0892c90e29bca63a5ef59a0f4a8b79237db87541295b719468bfb36fba92",
+      "current_event_hash": "a90dfb259163eb371cf792518e2688b1f51cb3241a774b986e74ea28b4931a77",
+      "timestamp": "2026-10-23T15:15:00Z",
+      "details": {
+        "rulebook_id": "rb-aurora-v1",
+        "version": "1.1.0",
+        "rules_count": 8,
+        "source": "01_Aurora_Brand_Guidelines.pdf"
+      }
+    },
+    {
+      "sequence_number": 3,
+      "event_type": "FACT_CREATED",
+      "actor_id": "usr-manager-01",
+      "actor_role": "BRAND_MANAGER",
+      "payload_hash": "9c882a17f69424c8bfba21ef5e1ca290378bc2891d0f5e71465a58bc289139cf",
+      "prev_event_hash": "a90dfb259163eb371cf792518e2688b1f51cb3241a774b986e74ea28b4931a77",
+      "current_event_hash": "72bc9166eb9910cf8e30b1254ac9018e658bb1a4e8d356c9a9bf9891ac372184",
+      "timestamp": "2026-10-23T15:30:00Z",
+      "details": {
+        "fact_code": "FACT-001",
+        "subject": "Workspace Coordination",
+        "status": "CERTIFIED"
+      }
+    },
+    {
+      "sequence_number": 4,
+      "event_type": "FACT_CREATED",
+      "actor_id": "usr-manager-01",
+      "actor_role": "BRAND_MANAGER",
+      "payload_hash": "4a719c28bf9e1029e8401824bc8921df65a7e91823bc091823eb918234678912",
+      "prev_event_hash": "72bc9166eb9910cf8e30b1254ac9018e658bb1a4e8d356c9a9bf9891ac372184",
+      "current_event_hash": "55af826310cf8a912bb38190ac91827eb098231456ca901823ef091823467812",
+      "timestamp": "2026-10-23T15:31:00Z",
+      "details": {
+        "fact_code": "FACT-002",
+        "subject": "Standard Plan Pricing ($12/user/mo)",
+        "status": "CERTIFIED"
+      }
+    },
+    {
+      "sequence_number": 5,
+      "event_type": "CONTENT_SUBMISSION_AUDITED",
+      "actor_id": "usr-creator-01",
+      "actor_role": "CREATOR",
+      "payload_hash": "d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5",
+      "prev_event_hash": "55af826310cf8a912bb38190ac91827eb098231456ca901823ef091823467812",
+      "current_event_hash": "e81092837bc901827ef0918231456ca9018237ef0918234678123901827ef091",
+      "timestamp": "2026-10-23T22:20:00Z",
+      "details": {
+        "title": "Aurora Compliant Campaign Draft",
+        "blocking_flags": 0,
+        "advisory_flags": 0,
+        "content_hash": "d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5"
+      }
+    },
+    {
+      "sequence_number": 6,
+      "event_type": "ASSET_APPROVAL_DECISION",
+      "actor_id": "usr-manager-01",
+      "actor_role": "BRAND_MANAGER",
+      "payload_hash": "88ef0918237eb0918231456ca9018237ef0918234678123901827ef0918237ab",
+      "prev_event_hash": "e81092837bc901827ef0918231456ca9018237ef0918234678123901827ef091",
+      "current_event_hash": "2ea16c9e0d16c52a7837016d84950275d314811a2f646eef88ad4a2f8c5b81a1",
+      "timestamp": "2026-10-23T22:25:00Z",
+      "details": {
+        "asset_name": "07_Aurora_Logo_Compliant.png",
+        "aspect_ratio": "1.00:1",
+        "decision": "APPROVED",
+        "receipt_id": "RCPT-ASSET-07AURORA"
+      }
+    },
+    {
+      "sequence_number": 7,
+      "event_type": "APPROVAL_DECISION",
+      "actor_id": "usr-approver-01",
+      "actor_role": "APPROVER",
+      "payload_hash": "63fc5f8be7882299b8e8f8ce347dd9485b3bc857d90d79f22ae31a86fe156a50",
+      "prev_event_hash": "2ea16c9e0d16c52a7837016d84950275d314811a2f646eef88ad4a2f8c5b81a1",
+      "current_event_hash": "b47df83c92176b509ef1df5d43eec4b36015cae6f8ad689531ca1188319fbb1c",
+      "timestamp": "2026-10-23T22:35:00Z",
+      "details": {
+        "submission_title": "Aurora Compliant Campaign Draft",
+        "decision": "APPROVED",
+        "receipt_id": "RCPT-AURORA-2026-001",
+        "content_hash": "d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5",
+        "approver": "biju@apexdynamics.example"
+      }
+    }
+  ]
+}

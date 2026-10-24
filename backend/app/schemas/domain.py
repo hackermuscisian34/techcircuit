@@ -91,6 +91,8 @@ class RulebookBase(BaseModel):
     version: str
     title: str
     description: Optional[str] = None
+    brand_name: Optional[str] = 'Apex Dynamics'
+    region: Optional[str] = 'GLOBAL'
     status: str = 'ACTIVE'
 
 class RulebookResponse(RulebookBase):
@@ -116,6 +118,8 @@ class FactBase(BaseModel):
     owner_email: str
     valid_from: Optional[datetime] = None
     valid_until: datetime
+    brand_name: Optional[str] = 'Apex Dynamics'
+    region: Optional[str] = 'GLOBAL'
     status: str = 'ACTIVE'
 
 class FactCreate(FactBase):
@@ -213,6 +217,8 @@ class ContentSubmissionResponse(BaseModel):
     title: str
     content_type: str
     original_filename: Optional[str] = None
+    brand_name: Optional[str] = 'Apex Dynamics'
+    region: Optional[str] = 'GLOBAL'
     current_status: str
     created_at: datetime
     updated_at: datetime
@@ -237,6 +243,8 @@ class ReviewResultResponse(BaseModel):
     intent_card: Optional[IntentCardResponse] = None
     diff_html: Optional[str] = None
     suggested_full_text: Optional[str] = None
+    brand_name: Optional[str] = 'Apex Dynamics'
+    region: Optional[str] = 'GLOBAL'
     model_disclosure: Dict[str, Any] = {}
 
 class ApprovalDecisionCreate(BaseModel):
@@ -334,12 +342,17 @@ class GovernanceInsightsResponse(BaseModel):
     proposed_amendments: List[ProposedAmendmentResponse]
     stale_claims_detected: int
     ambiguous_rules_count: int
+    violation_trends: List[Dict[str, Any]] = []
+    average_turnaround_hours: float = 0.0
+    root_cause_recommendations: List[Dict[str, Any]] = []
 
 class BrandAssetBase(BaseModel):
     name: str
     category: str
     description: Optional[str] = None
     intended_usage: Optional[str] = None
+    brand_name: Optional[str] = 'Apex Dynamics'
+    region: Optional[str] = 'GLOBAL'
     version: Optional[str] = '1.0.0'
     metadata_json: Optional[Dict[str, Any]] = None
 
@@ -400,3 +413,46 @@ class BrandAssetStats(BaseModel):
     archived_assets: int
     rejected_assets: int
     categories_summary: Dict[str, int]
+
+class CommentCreate(BaseModel):
+    text: str
+    finding_id: Optional[str] = None
+
+class CommentResponse(BaseModel):
+    id: str
+    submission_id: str
+    author_id: str
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+    finding_id: Optional[str] = None
+    text: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AffectedItemDetail(BaseModel):
+    submission_id: str
+    submission_title: str
+    creator_name: Optional[str] = None
+    current_status: str
+    content_snippet: str
+    impact_type: str # 'NEWLY_NON_COMPLIANT' | 'NEWLY_COMPLIANT' | 'SEVERITY_CHANGED' | 'UNAFFECTED'
+    explanation: str
+
+class RuleImpactSimulationRequest(BaseModel):
+    rule_id: str
+    proposed_description: str
+    proposed_severity: Optional[str] = None
+
+class RuleImpactSimulationResponse(BaseModel):
+    rule_id: str
+    rule_code: str
+    original_title: str
+    original_description: str
+    proposed_description: str
+    total_evaluated: int
+    newly_non_compliant_count: int
+    newly_compliant_count: int
+    severity_changed_count: int
+    affected_items: List[AffectedItemDetail]

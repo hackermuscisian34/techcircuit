@@ -1,0 +1,27 @@
+================================================================================
+          FIDELIS / CANON &mdash; CERTIFIED TAMPER-PROOF BRAND DOCUMENT
+================================================================================
+Certificate ID     : RCPT-AURORA-2026-001
+Document Title     : Aurora Compliant Campaign Draft
+Governance Status  : APPROVED FOR PUBLIC DISTRIBUTION
+Certified SHA-256  : d5185af58c2a98715f337e23b70e39def182e3bc3415ae42541cbaae012766f5
+Active Rulebook    : Aurora Labs Brand Guidelines (v1.1.0)
+Executive Approver : Biju (Executive Approver &bull; usr-approver-01)
+Certified Date     : 2026-10-23T22:35:00Z
+Audit Ledger Block : #8 (HMAC-SHA256 Cryptographic Chain Sealed)
+================================================================================
+
+Meet Aurora Desk: The modern team workspace designed for seamless project coordination and structured team collaboration.
+Sign in to your team workspace today. In internal usability evaluations, 24 participants completed the initial onboarding walkthrough in under 10 minutes (UX-24 report).
+The standard plan costs $12 per user per month when billed monthly. Experience transparent pricing with verified infrastructure.
+Aurora Labs currently has 18 team members dedicated to high-reliability software. Explore our documentation and customer onboarding guide to get started.
+
+================================================================================
+VERIFICATION NOTICE:
+Any manual alteration of whitespace, punctuation, or wording invalidates the
+cryptographic SHA-256 digest (d5185af5...) and triggers an immediate tamper flag
+in the FIDELIS governance verification ledger.
+================================================================================
+[END OF OFFICIAL TAMPER-PROOF CERTIFIED DOCUMENT]
+
+=== FIDELIS OFFICIAL BRAND GOVERNANCE CERTIFICATE === Receipt ID: 892b5194-4697-4180-ae47-22680b2b0e4c Content Title: 03 Aurora Marketing Draft Intentionally Bad Status: APPROVED Approver: Alfred Biju Content Hash: 6bb66fe59780c3fb96348abb859f56638db6b4ff18ec864f121a71c59827c6b2 Timestamp: 2026-10-23T17:12:51.760Z =================================================

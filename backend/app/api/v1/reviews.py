@@ -4,8 +4,8 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import ContentSubmission, ContentVersion, IntentCard, ExtractedClaim, Finding, Rulebook, Rule, Fact, AuditEvent, User
-from app.schemas.domain import ReviewResultResponse, ContentSubmissionResponse, FindingResponse, ExtractedClaimResponse, IntentCardResponse, FindingDecisionUpdate
+from app.db.models import ContentSubmission, ContentVersion, IntentCard, ExtractedClaim, Finding, Rulebook, Rule, Fact, AuditEvent, User, Comment
+from app.schemas.domain import ReviewResultResponse, ContentSubmissionResponse, FindingResponse, ExtractedClaimResponse, IntentCardResponse, FindingDecisionUpdate, CommentCreate, CommentResponse
 from app.core.security import sanitize_and_redact_content, get_current_user
 from app.core.audit_chain import calculate_sha256, record_audit_event
 from app.core.intent_lock import intent_lock
@@ -21,7 +21,16 @@ router = APIRouter(prefix='/reviews', tags=['Content Review'])
 @router.post('/run', response_model=ReviewResultResponse)
 @router.post('', response_model=ReviewResultResponse)
 @router.post('/', response_model=ReviewResultResponse)
-async def submit_and_review_content(title: str=Form(...), content_text: Optional[str]=Form(None), file: Optional[UploadFile]=File(None), current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
+async def submit_and_review_content(
+    title: str = Form(...),
+    content_text: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    submission_id: Optional[str] = Form(None),
+    brand_name: Optional[str] = Form('Apex Dynamics'),
+    region: Optional[str] = Form('GLOBAL'),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     creator_id = current_user.id
     workspace_id = current_user.workspace_id
     raw_content = ''
@@ -34,7 +43,7 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
         try:
             content_bytes = await read_uploaded_file_safely(file, settings.MAX_UPLOAD_SIZE_MB)
             raw_content = parse_uploaded_file(filename, content_bytes)
-            if content_type in ['PNG', 'JPG', 'JPEG']:
+            if content_type in ['PNG', 'JPG', 'JPEG', 'WEBP']:
                 img_analysis = analyze_image_asset(content_bytes, filename)
                 image_findings = img_analysis.get('visual_findings', [])
         except ValueError as ve:
@@ -49,12 +58,21 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
         raise HTTPException(status_code=400, detail='Submitted content cannot be empty.')
     redacted_content, redaction_map = sanitize_and_redact_content(raw_content)
     content_hash = calculate_sha256(raw_content)
-    active_rulebook = db.query(Rulebook).filter(Rulebook.workspace_id == workspace_id, Rulebook.status == 'ACTIVE').first()
+
+    # Scoped Rulebook retrieval: look for brand-specific rulebook, fallback to active workspace rulebook
+    rb_query = db.query(Rulebook).filter(Rulebook.workspace_id == workspace_id, Rulebook.status == 'ACTIVE')
+    if brand_name:
+        active_rulebook = rb_query.filter(Rulebook.brand_name == brand_name).first() or rb_query.first()
+    else:
+        active_rulebook = rb_query.first()
+
     rulebook_version = active_rulebook.version if active_rulebook else '1.0.0'
     active_rules = db.query(Rule).filter(Rule.rulebook_id == active_rulebook.id).all() if active_rulebook else []
     intent_data = await intent_lock.build_intent_card(redacted_content)
     extracted_claim_dicts = await claim_ledger.extract_claims(redacted_content)
-    verified_claims = claim_ledger.verify_claims_against_vault(db, workspace_id, extracted_claim_dicts)
+    verified_claims = claim_ledger.verify_claims_against_vault(
+        db, workspace_id, extracted_claim_dicts, brand_name=brand_name, region=region
+    )
     rule_dicts = [{'id': r.id, 'rule_code': r.rule_code, 'category': r.category, 'severity': r.severity, 'enforcement_type': r.enforcement_type, 'source_quote': r.source_quote, 'source_section': r.source_section, 'description': r.description, 'pass_example': r.pass_example, 'fail_example': r.fail_example} for r in active_rules]
     candidate_findings = check_terminology_rules(raw_content, rule_dicts)
     for vc in verified_claims:
@@ -69,7 +87,7 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
         candidate_findings.append({'rule_id': None, 'rule_code': vf['rule_code'], 'category': vf.get('category', 'Visual'), 'severity': vf.get('severity', 'WARNING'), 'span_start': 0, 'span_end': len(filename or 'image'), 'matched_text': filename or 'image asset', 'source_quote': 'Approved Visual Brand Identity Standards', 'source_section': 'Brand Guidelines', 'explanation': vf['explanation'], 'evidence_status': 'VERIFIED', 'confidence_tier': 'DETERMINISTIC', 'suggested_correction': None, 'verification_status': 'VERIFIED'})
     a11y_findings = audit_text_accessibility(raw_content)
     for af in a11y_findings:
-        candidate_findings.append({'rule_id': None, 'rule_code': af['rule_code'], 'category': af.get('category', 'Accessibility'), 'severity': af.get('severity', 'ADVISORY'), 'span_start': af.get('span_start', 0), 'span_end': af.get('span_end', len(af.get('matched_text', ''))), 'matched_text': af.get('matched_text', ''), 'source_quote': 'WCAG 2.2 Editorial Accessibility Standard', 'source_section': 'Accessibility Guidelines', 'explanation': af['explanation'], 'evidence_status': 'VERIFIED', 'confidence_tier': 'DETERMINISTIC', 'suggested_correction': None, 'verification_status': 'VERIFIED'})
+        candidate_findings.append({'rule_id': None, 'rule_code': af['rule_code'], 'category': af.get('category', 'Accessibility'), 'severity': af.get('severity', 'ADVISORY'), 'span_start': af.get('span_start', 0), 'span_end': af.get('span_end', len(af.get('matched_text', ''))), 'matched_text': af.get('matched_text', ''), 'source_quote': 'WCAG 2.2 Editorial Accessibility Standard', 'source_section': 'Accessibility Guidelines', 'explanation': af['explanation'], 'evidence_status': 'VERIFIED', 'confidence_tier': 'DETERMINISTIC', 'suggested_correction': af.get('suggested_correction'), 'verification_status': 'VERIFIED'})
     tone_rules = [r for r in active_rules if r.category == 'Tone']
     active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface')
     active_provider = 'Hugging Face Cloud Inference' if active_is_hf else 'Local Ollama Inference'
@@ -101,19 +119,76 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
     diff_html = suggestion_res['diff_html']
     preservation_res = intent_lock.verify_intent_preservation(raw_content, suggested_full_text, intent_data)
     intent_data['preservation_status'] = preservation_res['status']
-    submission = ContentSubmission(workspace_id=workspace_id, creator_id=creator_id, title=title, content_type=content_type, original_filename=filename, current_status='SUBMITTED')
-    db.add(submission)
-    db.flush()
-    version = ContentVersion(submission_id=submission.id, version_number=1, raw_text=raw_content, redacted_text=redacted_content, content_hash=content_hash, rulebook_version=rulebook_version)
+
+    # Version handling & revision invalidation
+    if submission_id:
+        submission = db.query(ContentSubmission).filter(
+            ContentSubmission.id == submission_id,
+            ContentSubmission.workspace_id == workspace_id
+        ).first()
+        if not submission:
+            raise HTTPException(status_code=404, detail='Submission not found in this workspace.')
+        latest_ver = db.query(ContentVersion).filter(
+            ContentVersion.submission_id == submission.id
+        ).order_by(ContentVersion.version_number.desc()).first()
+        version_number = (latest_ver.version_number + 1) if latest_ver else 1
+        prior_status = submission.current_status
+        invalidated_approval = prior_status in ['APPROVED', 'APPROVED_WITH_EXCEPTION']
+        submission.title = title
+    else:
+        submission = ContentSubmission(
+            workspace_id=workspace_id,
+            creator_id=creator_id,
+            title=title,
+            content_type=content_type,
+            original_filename=filename,
+            brand_name=brand_name or 'Apex Dynamics',
+            region=region or 'GLOBAL',
+            current_status='IN_REVIEW'
+        )
+        db.add(submission)
+        db.flush()
+        version_number = 1
+        prior_status = 'NEW'
+        invalidated_approval = False
+
+    version = ContentVersion(
+        submission_id=submission.id,
+        version_number=version_number,
+        raw_text=raw_content,
+        redacted_text=redacted_content,
+        content_hash=content_hash,
+        rulebook_version=rulebook_version
+    )
     db.add(version)
     db.flush()
-    ic_record = IntentCard(content_version_id=version.id, purpose=intent_data['purpose'], target_audience=intent_data['target_audience'], call_to_action=intent_data['call_to_action'], must_keep_facts=intent_data['must_keep_facts'], product_names=intent_data['product_names'], numerical_claims=intent_data['numerical_claims'], tone_constraints=intent_data['tone_constraints'], preservation_status=intent_data['preservation_status'])
+
+    ic_record = IntentCard(
+        content_version_id=version.id,
+        purpose=intent_data['purpose'],
+        target_audience=intent_data['target_audience'],
+        call_to_action=intent_data['call_to_action'],
+        must_keep_facts=intent_data['must_keep_facts'],
+        product_names=intent_data['product_names'],
+        numerical_claims=intent_data['numerical_claims'],
+        tone_constraints=intent_data['tone_constraints'],
+        preservation_status=intent_data['preservation_status']
+    )
     db.add(ic_record)
+
     persisted_claims = []
     for vc in verified_claims:
-        claim_obj = ExtractedClaim(content_version_id=version.id, matched_fact_id=vc.get('matched_fact_id'), claim_text=vc['claim_text'], claim_type=vc['claim_type'], status=vc['status'], reasoning=vc['reasoning'])
+        claim_obj = ExtractedClaim(
+            content_version_id=version.id,
+            matched_fact_id=vc.get('matched_fact_id'),
+            claim_text=vc['claim_text'],
+            claim_type=vc['claim_type'],
+            status=vc['status'],
+            reasoning=vc['reasoning']
+        )
         db.add(claim_obj)
         persisted_claims.append(claim_obj)
+
     persisted_findings = []
     blocking_count = 0
     warning_count = 0
@@ -126,14 +201,105 @@ async def submit_and_review_content(title: str=Form(...), content_text: Optional
             warning_count += 1
         else:
             advisory_count += 1
-        finding_obj = Finding(content_version_id=version.id, rule_id=vf.get('rule_id'), category=vf['category'], severity=vf['severity'], span_start=vf.get('span_start', 0), span_end=vf.get('span_end', 0), matched_text=vf.get('matched_text', ''), source_quote=vf.get('source_quote'), source_section=vf.get('source_section'), explanation=vf['explanation'], evidence_status=vf.get('evidence_status', 'VERIFIED'), confidence_tier=vf.get('confidence_tier', 'DETERMINISTIC'), suggested_correction=vf.get('suggested_correction'), verification_status=vf.get('verification_status', 'VERIFIED'), rejection_reason=vf.get('rejection_reason'), user_decision='PENDING')
+        finding_obj = Finding(
+            content_version_id=version.id,
+            rule_id=vf.get('rule_id'),
+            category=vf['category'],
+            severity=vf['severity'],
+            span_start=vf.get('span_start', 0),
+            span_end=vf.get('span_end', 0),
+            matched_text=vf.get('matched_text', ''),
+            source_quote=vf.get('source_quote'),
+            source_section=vf.get('source_section'),
+            explanation=vf['explanation'],
+            evidence_status=vf.get('evidence_status', 'VERIFIED'),
+            confidence_tier=vf.get('confidence_tier', 'DETERMINISTIC'),
+            suggested_correction=vf.get('suggested_correction'),
+            verification_status=vf.get('verification_status', 'VERIFIED'),
+            rejection_reason=vf.get('rejection_reason'),
+            user_decision='PENDING'
+        )
         db.add(finding_obj)
         persisted_findings.append(finding_obj)
+
     overall_status = 'CHANGES_REQUESTED' if blocking_count > 0 else 'WARNING' if warning_count > 0 else 'CLEAN'
-    submission.current_status = 'CHANGES_REQUESTED' if blocking_count > 0 else 'SUBMITTED'
+    submission.current_status = 'CHANGES_REQUESTED' if blocking_count > 0 else 'IN_REVIEW'
+    submission.updated_at = datetime.now(timezone.utc)
     db.commit()
-    record_audit_event(db=db, workspace_id=workspace_id, event_type='REVIEW_EXECUTED', actor_id=creator_id, actor_role='CREATOR', details={'submission_id': submission.id, 'version_id': version.id, 'content_hash': content_hash, 'blocking_findings': blocking_count, 'advisory_findings': advisory_count, 'rulebook_version': rulebook_version})
-    return ReviewResultResponse(submission_id=submission.id, version_id=version.id, version_number=1, content_hash=content_hash, rulebook_version=rulebook_version, overall_status=overall_status, blocking_findings_count=blocking_count, warning_findings_count=warning_count, advisory_findings_count=advisory_count, intent_preservation_status=intent_data['preservation_status'], findings=[FindingResponse(id=pf.id, content_version_id=pf.content_version_id, rule_id=pf.rule_id, rule_code=vf.get('rule_code'), category=pf.category, severity=pf.severity, span_start=pf.span_start, span_end=pf.span_end, matched_text=pf.matched_text, source_quote=pf.source_quote, source_section=pf.source_section, explanation=pf.explanation, evidence_status=pf.evidence_status, confidence_tier=pf.confidence_tier, suggested_correction=pf.suggested_correction, verification_status=pf.verification_status, rejection_reason=pf.rejection_reason, user_decision=pf.user_decision, created_at=pf.created_at) for pf, vf in zip(persisted_findings, verified_findings)], claims=[ExtractedClaimResponse(id=pc.id, content_version_id=pc.content_version_id, matched_fact_id=pc.matched_fact_id, claim_text=pc.claim_text, claim_type=pc.claim_type, status=pc.status, reasoning=pc.reasoning) for pc in persisted_claims], intent_card=IntentCardResponse.model_validate(ic_record), diff_html=diff_html, suggested_full_text=suggested_full_text, model_disclosure=model_disclosure)
+
+    # Log audit event for review or revision
+    event_type = 'SUBMISSION_REVISED' if submission_id else 'REVIEW_EXECUTED'
+    record_audit_event(
+        db=db,
+        workspace_id=workspace_id,
+        event_type=event_type,
+        actor_id=creator_id,
+        actor_role='CREATOR',
+        details={
+            'submission_id': submission.id,
+            'version_id': version.id,
+            'version_number': version_number,
+            'content_hash': content_hash,
+            'blocking_findings': blocking_count,
+            'advisory_findings': advisory_count,
+            'rulebook_version': rulebook_version,
+            'prior_status': prior_status,
+            'invalidated_approval': invalidated_approval
+        }
+    )
+
+    return ReviewResultResponse(
+        submission_id=submission.id,
+        version_id=version.id,
+        version_number=version_number,
+        content_hash=content_hash,
+        rulebook_version=rulebook_version,
+        overall_status=overall_status,
+        blocking_findings_count=blocking_count,
+        warning_findings_count=warning_count,
+        advisory_findings_count=advisory_count,
+        intent_preservation_status=intent_data['preservation_status'],
+        findings=[
+            FindingResponse(
+                id=pf.id,
+                content_version_id=pf.content_version_id,
+                rule_id=pf.rule_id,
+                rule_code=vf.get('rule_code'),
+                category=pf.category,
+                severity=pf.severity,
+                span_start=pf.span_start,
+                span_end=pf.span_end,
+                matched_text=pf.matched_text,
+                source_quote=pf.source_quote,
+                source_section=pf.source_section,
+                explanation=pf.explanation,
+                evidence_status=pf.evidence_status,
+                confidence_tier=pf.confidence_tier,
+                suggested_correction=pf.suggested_correction,
+                verification_status=pf.verification_status,
+                rejection_reason=pf.rejection_reason,
+                user_decision=pf.user_decision,
+                created_at=pf.created_at
+            ) for pf, vf in zip(persisted_findings, verified_findings)
+        ],
+        claims=[
+            ExtractedClaimResponse(
+                id=pc.id,
+                content_version_id=pc.content_version_id,
+                matched_fact_id=pc.matched_fact_id,
+                claim_text=pc.claim_text,
+                claim_type=pc.claim_type,
+                status=pc.status,
+                reasoning=pc.reasoning
+            ) for pc in persisted_claims
+        ],
+        intent_card=IntentCardResponse.model_validate(ic_record),
+        diff_html=diff_html,
+        suggested_full_text=suggested_full_text,
+        brand_name=submission.brand_name,
+        region=submission.region,
+        model_disclosure=model_disclosure
+    )
 
 @router.get('/submissions', response_model=List[ContentSubmissionResponse])
 def list_submissions(current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
@@ -154,7 +320,85 @@ def get_submission_details(submission_id: str, current_user: User=Depends(get_cu
     findings = db.query(Finding).filter(Finding.content_version_id == latest_version.id).all() if latest_version else []
     claims = db.query(ExtractedClaim).filter(ExtractedClaim.content_version_id == latest_version.id).all() if latest_version else []
     intent_card = db.query(IntentCard).filter(IntentCard.content_version_id == latest_version.id).first() if latest_version else None
-    return {'submission': ContentSubmissionResponse.model_validate(sub), 'version': {'id': latest_version.id if latest_version else None, 'version_number': latest_version.version_number if latest_version else 1, 'content_hash': latest_version.content_hash if latest_version else None, 'raw_text': latest_version.raw_text if latest_version else '', 'rulebook_version': latest_version.rulebook_version if latest_version else '1.0.0'}, 'findings': [FindingResponse.model_validate(f) for f in findings], 'claims': [ExtractedClaimResponse.model_validate(c) for c in claims], 'intent_card': IntentCardResponse.model_validate(intent_card) if intent_card else None}
+    return {
+        'submission': ContentSubmissionResponse.model_validate(sub),
+        'version': {
+            'id': latest_version.id if latest_version else None,
+            'version_number': latest_version.version_number if latest_version else 1,
+            'content_hash': latest_version.content_hash if latest_version else None,
+            'raw_text': latest_version.raw_text if latest_version else '',
+            'rulebook_version': latest_version.rulebook_version if latest_version else '1.0.0'
+        },
+        'findings': [FindingResponse.model_validate(f) for f in findings],
+        'claims': [ExtractedClaimResponse.model_validate(c) for c in claims],
+        'intent_card': IntentCardResponse.model_validate(intent_card) if intent_card else None
+    }
+
+@router.get('/submissions/{submission_id}/versions', response_model=List[Dict[str, Any]])
+def get_submission_version_history(submission_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
+    sub = db.query(ContentSubmission).filter(ContentSubmission.id == submission_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail='Submission not found.')
+    versions = db.query(ContentVersion).filter(ContentVersion.submission_id == sub.id).order_by(ContentVersion.version_number.desc()).all()
+    history = []
+    for v in versions:
+        findings_count = len(v.findings)
+        blocking_count = sum(1 for f in v.findings if f.severity == 'BLOCKING')
+        receipt_issued = v.receipt is not None
+        history.append({
+            'version_id': v.id,
+            'version_number': v.version_number,
+            'content_hash': v.content_hash,
+            'rulebook_version': v.rulebook_version,
+            'total_findings': findings_count,
+            'blocking_findings': blocking_count,
+            'has_receipt': receipt_issued,
+            'created_at': v.created_at
+        })
+    return history
+
+@router.get('/submissions/{submission_id}/comments', response_model=List[CommentResponse])
+def get_submission_comments(submission_id: str, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
+    sub = db.query(ContentSubmission).filter(ContentSubmission.id == submission_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail='Submission not found.')
+    comments = db.query(Comment).filter(Comment.submission_id == sub.id).order_by(Comment.created_at.asc()).all()
+    responses = []
+    for c in comments:
+        res = CommentResponse.model_validate(c)
+        res.author_name = c.author.full_name if c.author else 'Unknown'
+        res.author_role = c.author.role if c.author else 'USER'
+        responses.append(res)
+    return responses
+
+@router.post('/submissions/{submission_id}/comments', response_model=CommentResponse)
+def add_submission_comment(submission_id: str, payload: CommentCreate, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
+    sub = db.query(ContentSubmission).filter(ContentSubmission.id == submission_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail='Submission not found.')
+    if not payload.text or not payload.text.strip():
+        raise HTTPException(status_code=400, detail='Comment text cannot be empty.')
+    comment = Comment(
+        submission_id=sub.id,
+        author_id=current_user.id,
+        finding_id=payload.finding_id,
+        text=payload.text.strip()
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    record_audit_event(
+        db=db,
+        workspace_id=current_user.workspace_id,
+        event_type='COMMENT_RECORDED',
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        details={'submission_id': sub.id, 'comment_id': comment.id, 'finding_id': payload.finding_id}
+    )
+    res = CommentResponse.model_validate(comment)
+    res.author_name = current_user.full_name
+    res.author_role = current_user.role
+    return res
 
 @router.put('/findings/{finding_id}/decision')
 @router.post('/findings/{finding_id}/decision')
@@ -169,3 +413,4 @@ def update_finding_decision(finding_id: str, payload: FindingDecisionUpdate, cur
         reason_val = payload.override_reason or payload.note or 'Operational context justification'
         record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='OVERRIDE_LOGGED', actor_id=current_user.id, actor_role=current_user.role, details={'finding_id': finding.id, 'rule_id': finding.rule_id, 'reason': reason_val})
     return {'message': 'Finding decision recorded', 'finding_id': finding.id, 'decision': decision_val}
+

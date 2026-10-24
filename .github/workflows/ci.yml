@@ -1,4 +1,4 @@
-name: CANON CI - Full-Stack Verification
+name: CANON / FIDELIS CI - Full-Stack Verification & Release Gates
 
 on:
   push:
@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
-  backend-tests:
-    name: Backend Security, Audit & Invariant Tests
+  backend-verification:
+    name: Backend Security, Migrations & Invariant Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -21,25 +24,45 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install Backend Dependencies
+      - name: Install Dependencies
         working-directory: ./backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio anyio httpx
+          pip install pytest pytest-asyncio anyio httpx alembic
 
-      - name: Run Backend Pytest Suite
+      - name: Validate Database Schema Migrations (Alembic)
+        working-directory: ./backend
+        env:
+          DATABASE_URL: sqlite:///test_migration.db
+          ENVIRONMENT: test
+          SECRET_KEY: ci-test-secret-key-at-least-32-chars-long-for-alembic-check
+        run: |
+          alembic upgrade head
+          alembic current
+          rm -f test_migration.db
+
+      - name: Run Disaster Recovery & Backup Drill
+        env:
+          ENVIRONMENT: test
+          SECRET_KEY: ci-test-secret-key-at-least-32-chars-long-for-drill
+        run: |
+          python scripts/backup_restore.py test-cycle
+
+      - name: Execute Full Pytest Security & Regression Suite
         working-directory: ./backend
         env:
           ENVIRONMENT: test
-          SECRET_KEY: test-secret-key-for-ci-runs
+          SECRET_KEY: ci-test-secret-key-at-least-32-chars-long-for-tests
           DATABASE_URL: sqlite:///:memory:
-          ALLOW_MOCK_LLM_FALLBACK: true
+          ENABLE_DEV_PERSONA_SWITCHING: true
+          ENABLE_DEMO_ACCOUNTS: true
+          RATE_LIMIT_ENABLED: false
         run: |
           pytest tests/ -v --tb=short
 
-  frontend-checks:
-    name: Frontend Lint, Typecheck & Next.js Build
+  frontend-verification:
+    name: Frontend Lint, Typecheck & Next.js Production Build
     runs-on: ubuntu-latest
 
     steps:

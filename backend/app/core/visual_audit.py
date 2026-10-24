@@ -45,9 +45,25 @@ class GeometryAuditor:
         issues = []
         if not specs['passes_spec']:
             if specs['is_distorted']:
-                issues.append({'category': 'Visual', 'severity': 'BLOCKING', 'rule_code': 'LOGO-RATIO', 'title': 'Logo Aspect Ratio Distortion Detected', 'explanation': f"Logo dimensions ({span_x}x{span_y}, ratio {quotient}:1) deviate from approved brand spec ({specs['required_ratio']}:1).", 'confidence_tier': 'DETERMINISTIC', 'verification_status': 'VERIFIED'})
+                issues.append({
+                    'category': 'Visual',
+                    'severity': 'BLOCKING',
+                    'rule_code': 'LOGO-RATIO',
+                    'title': 'Logo Aspect Ratio Distortion Detected',
+                    'explanation': f"Logo dimensions ({span_x}x{span_y}, measured ratio {quotient}:1) deviate from approved brand spec ({specs['required_ratio']}:1) by {specs.get('deviation_percent', 0)}% (difference: {specs.get('ratio_difference', 0)}). Clear-space margin requirement: {specs.get('clearspace_margin_px', 0)}px.",
+                    'confidence_tier': 'DETERMINISTIC',
+                    'verification_status': 'VERIFIED'
+                })
             if specs['is_undersized']:
-                issues.append({'category': 'Visual', 'severity': 'WARNING', 'rule_code': 'LOGO-MIN-SIZE', 'title': 'Logo Renders Below Minimum Legible Height', 'explanation': f'Logo height ({span_y}px) is below minimum legible specification of 24px.', 'confidence_tier': 'DETERMINISTIC', 'verification_status': 'VERIFIED'})
+                issues.append({
+                    'category': 'Visual',
+                    'severity': 'WARNING',
+                    'rule_code': 'LOGO-MIN-SIZE',
+                    'title': 'Logo Renders Below Minimum Legible Height',
+                    'explanation': f"Logo height ({span_y}px) is below minimum legible specification of 24px.",
+                    'confidence_tier': 'DETERMINISTIC',
+                    'verification_status': 'VERIFIED'
+                })
         return (quotient, specs, issues)
 
 class PaletteComplianceEvaluator:
@@ -74,7 +90,18 @@ class ContrastAuditor:
         audit = check_wcag_contrast(fore, back, is_large_text=False)
         issues = []
         if not audit['passes_wcag_aa']:
-            issues.append({'category': 'Accessibility', 'severity': 'ADVISORY', 'rule_code': 'WCAG-CONTRAST-01', 'title': 'Low Contrast Between Primary Image Colors', 'explanation': f"Contrast ratio between top dominant colors ({fore} and {back}) is {audit['contrast_ratio']}:1, failing WCAG 2.2 AA standard threshold of {audit['required_ratio']}:1.", 'confidence_tier': 'DETERMINISTIC', 'verification_status': 'VERIFIED'})
+            alt_color = audit.get('suggested_accessible_color')
+            alt_text = f" Suggested accessible color: {alt_color}." if alt_color else ""
+            issues.append({
+                'category': 'Accessibility',
+                'severity': 'ADVISORY',
+                'rule_code': 'WCAG-CONTRAST-01',
+                'title': 'Low Contrast Between Primary Image Colors',
+                'explanation': f"Contrast ratio between top dominant colors ({fore} and {back}) is {audit['contrast_ratio']}:1, failing WCAG 2.2 AA standard threshold of {audit['required_ratio']}:1.{alt_text}",
+                'confidence_tier': 'DETERMINISTIC',
+                'verification_status': 'VERIFIED',
+                'suggested_correction': alt_color
+            })
         return (audit, issues)
 
 class VisualAssetAuditor:
@@ -103,6 +130,10 @@ class TextAccessibilityAuditor:
     AMBIGUOUS_ANCHOR_PATTERNS = ['\\b(?:click\\s+here|read\\s+more|learn\\s+more\\s+here|link|this\\s+link)\\b']
     SHOUTING_SEQUENCE_REGEX = re.compile('\\b[A-Z]{3,}(?:\\s+[A-Z]{3,}){2,}\\b')
 
+    IMAGE_MARKDOWN_REGEX = re.compile(r'!\[(.*?)\]\((.*?)\)')
+    IMAGE_HTML_REGEX = re.compile(r'<img\s+([^>]*?)>', re.IGNORECASE)
+    GENERIC_ALT_STRINGS = frozenset({'', 'image', 'photo', 'screenshot', 'logo', 'picture', 'graphic', 'asset', 'img'})
+
     @classmethod
     def audit_prose(cls, prose_corpus: str) -> List[Dict[str, Any]]:
         anomalies = []
@@ -112,6 +143,41 @@ class TextAccessibilityAuditor:
         for shouting_hit in cls.SHOUTING_SEQUENCE_REGEX.finditer(prose_corpus):
             excerpt = shouting_hit.group(0)
             anomalies.append({'category': 'Accessibility', 'severity': 'ADVISORY', 'rule_code': 'A11Y-ALL-CAPS', 'title': 'Extended ALL-CAPS Passage Affects Legibility', 'matched_text': excerpt, 'span_start': shouting_hit.start(), 'span_end': shouting_hit.end(), 'explanation': f"Prolonged uppercase phrase '{excerpt}' impedes readability and may be misread by screen readers as acronyms.", 'confidence_tier': 'DETERMINISTIC', 'verification_status': 'VERIFIED'})
+        # Markdown image alt text check
+        for md_img in cls.IMAGE_MARKDOWN_REGEX.finditer(prose_corpus):
+            alt_txt = md_img.group(1).strip()
+            if alt_txt.lower() in cls.GENERIC_ALT_STRINGS:
+                anomalies.append({
+                    'category': 'Accessibility',
+                    'severity': 'ADVISORY',
+                    'rule_code': 'A11Y-ALT-TEXT',
+                    'title': 'Missing or Non-Descriptive Image Alt Text',
+                    'matched_text': md_img.group(0),
+                    'span_start': md_img.start(),
+                    'span_end': md_img.end(),
+                    'explanation': f"Image alt text '{alt_txt}' is missing or non-descriptive (WCAG 1.1.1 Non-text Content). Provide meaningful descriptive alt text describing the image content and intent.",
+                    'confidence_tier': 'DETERMINISTIC',
+                    'verification_status': 'VERIFIED',
+                    'suggested_correction': '![Descriptive description of the image content](url)'
+                })
+        # HTML img tag alt text check
+        for html_img in cls.IMAGE_HTML_REGEX.finditer(prose_corpus):
+            tag_attrs = html_img.group(1)
+            alt_match = re.search(r'alt=[\'"](.*?)[\'"]', tag_attrs, re.IGNORECASE)
+            alt_val = alt_match.group(1).strip() if alt_match else ''
+            if not alt_match or alt_val.lower() in cls.GENERIC_ALT_STRINGS:
+                anomalies.append({
+                    'category': 'Accessibility',
+                    'severity': 'ADVISORY',
+                    'rule_code': 'A11Y-ALT-TEXT',
+                    'title': 'Missing or Non-Descriptive Image Alt Text in HTML',
+                    'matched_text': html_img.group(0),
+                    'span_start': html_img.start(),
+                    'span_end': html_img.end(),
+                    'explanation': f"HTML image tag has missing or non-descriptive alt text '{alt_val}' (WCAG 1.1.1 Non-text Content). Include meaningful alt attribute.",
+                    'confidence_tier': 'DETERMINISTIC',
+                    'verification_status': 'VERIFIED'
+                })
         return anomalies
 
 def audit_text_accessibility(text: str) -> List[Dict[str, Any]]:

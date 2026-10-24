@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any, Optional, Callable
 import docx
 import pypdf
 from app.core.visual_audit import analyze_image_asset
-FILE_SIGNATURES = {'pdf': [b'%PDF-'], 'docx': [b'PK\x03\x04'], 'png': [b'\x89PNG\r\n\x1a\n'], 'jpg': [b'\xff\xd8\xff'], 'jpeg': [b'\xff\xd8\xff']}
+FILE_SIGNATURES = {'pdf': [b'%PDF-'], 'docx': [b'PK\x03\x04'], 'png': [b'\x89PNG\r\n\x1a\n'], 'jpg': [b'\xff\xd8\xff'], 'jpeg': [b'\xff\xd8\xff'], 'webp': [b'RIFF']}
 DANGEROUS_PREAMBLES = (b'MZ', b'\x7fELF', b'#!')
 
 class SignatureVerifier:
@@ -23,11 +23,14 @@ class SignatureVerifier:
             allowed_prefixes = FILE_SIGNATURES[ext_label]
             if not any((byte_payload.startswith(pfx) for pfx in allowed_prefixes)):
                 raise ValueError(f"File signature mismatch for '.{ext_label}': deceptive or corrupted file format.")
+            if ext_label == 'webp':
+                if len(byte_payload) < 12 or byte_payload[8:12] != b'WEBP':
+                    raise ValueError("File signature mismatch for '.webp': missing WEBP header chunk.")
         elif ext_label == 'txt':
             if b'\x00' in byte_payload[:4096]:
                 raise ValueError('Binary content detected in plain text file.')
         else:
-            raise ValueError(f"Unsupported file extension '.{ext_label}'. Supported: .pdf, .docx, .txt, .png, .jpg, .jpeg")
+            raise ValueError(f"Unsupported file extension '.{ext_label}'. Supported: .pdf, .docx, .txt, .png, .jpg, .jpeg, .webp")
         return ext_label
 
 def validate_file_signature(filename: str, content_bytes: bytes) -> str:
@@ -94,14 +97,22 @@ class UploadedFileParser:
         metrics = analyze_image_asset(content, tag)
         swatch_sample = ', '.join((entry['hex'] for entry in metrics['dominant_colors'][:3]))
         return f"[Image Asset: {tag} ({metrics['width']}x{metrics['height']}px, format: {metrics['format']}). Aspect ratio: {metrics['aspect_ratio']}:1. Dominant palette: {swatch_sample}. Visual brand and contrast checks completed.]"
-    PARSER_DISPATCH: Dict[str, Callable[[bytes, str], str]] = {'txt': lambda b, _: extract_text_from_txt(b), 'docx': lambda b, _: extract_text_from_docx(b), 'pdf': lambda b, _: extract_text_from_pdf(b), 'png': lambda b, tag: UploadedFileParser._render_image_summary(b, tag), 'jpg': lambda b, tag: UploadedFileParser._render_image_summary(b, tag), 'jpeg': lambda b, tag: UploadedFileParser._render_image_summary(b, tag)}
+    PARSER_DISPATCH: Dict[str, Callable[[bytes, str], str]] = {
+        'txt': lambda b, _: extract_text_from_txt(b),
+        'docx': lambda b, _: extract_text_from_docx(b),
+        'pdf': lambda b, _: extract_text_from_pdf(b),
+        'png': lambda b, tag: UploadedFileParser._render_image_summary(b, tag),
+        'jpg': lambda b, tag: UploadedFileParser._render_image_summary(b, tag),
+        'jpeg': lambda b, tag: UploadedFileParser._render_image_summary(b, tag),
+        'webp': lambda b, tag: UploadedFileParser._render_image_summary(b, tag),
+    }
 
     @classmethod
     def parse(cls, target_name: str, byte_payload: bytes) -> str:
         ext_verified = SignatureVerifier.verify(target_name, byte_payload)
         handler = cls.PARSER_DISPATCH.get(ext_verified)
         if not handler:
-            raise ValueError(f"Unsupported file type '.{ext_verified}'. Supported: .pdf, .docx, .txt, .png, .jpg, .jpeg")
+            raise ValueError(f"Unsupported file type '.{ext_verified}'. Supported: .pdf, .docx, .txt, .png, .jpg, .jpeg, .webp")
         return handler(byte_payload, target_name)
 
 def parse_uploaded_file(filename: str, content_bytes: bytes) -> str:
