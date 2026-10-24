@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     OLLAMA_TIMEOUT_SECONDS: float = 45.0
     ALLOW_MOCK_LLM_FALLBACK: bool = True
 
+    # Cloud Open-Source Model API (Groq: free tier, runs Llama 3.3 / Qwen)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = 'llama-3.3-70b-versatile'
+
     CORS_ORIGINS: Union[list[str], str] = [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
@@ -73,6 +77,8 @@ class Settings(BaseSettings):
 
     @property
     def effective_hf_token(self) -> Optional[str]:
+        if self.LLM_PROVIDER == 'ollama':
+            return None
         import os
         return (
             self.HF_TOKEN

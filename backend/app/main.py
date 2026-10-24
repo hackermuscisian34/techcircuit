@@ -75,8 +75,9 @@ app.include_router(assets_router, prefix=settings.API_V1_STR)
 
 @app.get('/health', tags=['Health'])
 def health_check():
-    active_model = settings.HF_MODEL if (settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') else settings.OLLAMA_MODEL
-    active_provider = 'huggingface' if (settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') else ('ollama' if settings.LLM_PROVIDER == 'ollama' else 'auto')
+    active_is_hf = bool(settings.effective_hf_token or settings.LLM_PROVIDER == 'huggingface') and settings.LLM_PROVIDER != 'ollama'
+    active_provider = 'huggingface' if active_is_hf else 'ollama'
+    active_model = settings.HF_MODEL if active_is_hf else settings.OLLAMA_MODEL
     db_status = 'connected'
     try:
         with engine.connect() as conn:

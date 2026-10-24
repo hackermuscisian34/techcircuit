@@ -116,6 +116,47 @@ class LLMProvider:
         self.ollama_base_url = settings.OLLAMA_BASE_URL
         self.ollama_model = settings.OLLAMA_MODEL
         self.ollama_timeout = settings.OLLAMA_TIMEOUT_SECONDS
+        self.groq_api_key = settings.GROQ_API_KEY or os.environ.get('GROQ_API_KEY')
+        self.groq_model = settings.GROQ_MODEL
+
+    async def _generate_groq(self, fortified_instruction: str, user_prompt: str, t_zero: float) -> Dict[str, Any]:
+        api_key = self.groq_api_key or os.environ.get('GROQ_API_KEY')
+        if not api_key:
+            raise ValueError('No GROQ_API_KEY configured for cloud inference.')
+        payload = {
+            'model': self.groq_model,
+            'messages': [
+                {'role': 'system', 'content': fortified_instruction},
+                {'role': 'user', 'content': user_prompt}
+            ],
+            'response_format': {'type': 'json_object'},
+            'temperature': 0.1
+        }
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        async with httpx.AsyncClient(timeout=30.0) as session:
+            resp = await session.post('https://api.groq.com/openai/v1/chat/completions', json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_txt = data['choices'][0]['message']['content'] or '{}'
+                parsed_structure = clean_json_response(raw_txt)
+                elapsed = round((time.time() - t_zero) * 1000, 2)
+                return {
+                    'result': parsed_structure,
+                    'disclosure': {
+                        'provider': 'Groq Cloud Open-Source Llama 3.3',
+                        'model': self.groq_model,
+                        'region': 'cloud-serverless',
+                        'latency_ms': elapsed,
+                        'is_local': False,
+                        'is_fallback': False,
+                        'privacy_mode': 'Cloud Zero-Retention Open Weights',
+                        'prompt_injection_screened': True
+                    }
+                }
+            raise RuntimeError(f'Groq API returned status {resp.status_code}: {resp.text}')
 
     async def _generate_huggingface(self, fortified_instruction: str, user_prompt: str, t_zero: float) -> Dict[str, Any]:
         from huggingface_hub import AsyncInferenceClient
@@ -184,25 +225,32 @@ class LLMProvider:
         fortified_instruction = InferenceDefenseWrapper.wrap(system_prompt)
         last_error = None
 
-        # Determine whether to attempt Hugging Face cloud API
-        effective_token = settings.effective_hf_token or self.hf_token
-        should_try_hf = (self.provider == 'huggingface') or (self.provider == 'auto' and bool(effective_token))
+        # 1. Try Groq Cloud Open-Source inference if configured (24/7 cloud when laptop is off)
+        groq_key = self.groq_api_key or os.environ.get('GROQ_API_KEY')
+        if groq_key or self.provider == 'groq':
+            try:
+                return await self._generate_groq(fortified_instruction, user_prompt, t_zero)
+            except Exception as groq_err:
+                last_error = groq_err
 
+        # 2. Try Hugging Face ONLY if explicitly designated and token provided
+        effective_token = settings.effective_hf_token or self.hf_token
+        should_try_hf = (self.provider == 'huggingface') and bool(effective_token)
         if should_try_hf:
             try:
                 return await self._generate_huggingface(fortified_instruction, user_prompt, t_zero)
             except Exception as hf_err:
                 last_error = hf_err
 
-        # Try local Ollama if designated or as fallback in auto mode
-        should_try_ollama = (self.provider == 'ollama') or (self.provider == 'auto' and not should_try_hf) or (self.provider == 'auto' and should_try_hf)
+        # 3. Try local Ollama if designated or running
+        should_try_ollama = (self.provider == 'ollama') or (self.provider == 'auto' and not should_try_hf)
         if should_try_ollama:
             try:
                 return await self._generate_ollama(fortified_instruction, user_prompt, t_zero)
             except Exception as ollama_err:
                 last_error = last_error or ollama_err
 
-        # Fallback to deterministic heuristic resolver if permitted
+        # 4. Fallback to deterministic heuristic resolver if permitted (guarantees zero downtime)
         if settings.ALLOW_MOCK_LLM_FALLBACK:
             elapsed = round((time.time() - t_zero) * 1000, 2)
             synthesized_data = HeuristicFallbackResolver.synthesize(user_prompt)

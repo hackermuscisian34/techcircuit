@@ -12,23 +12,19 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: hackathon
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:////app/canon.db
+        value: sqlite:///./canon.db
 
-      # Pre-trained Open-Source LLM Settings (Hugging Face Serverless / Regional)
+      # Pre-trained Open-Source LLM Settings (Groq / Open-Source Cloud or Heuristic Engine)
       - key: LLM_PROVIDER
-        value: huggingface
-      - key: HF_TOKEN
-        sync: false # Set your Hugging Face User Access Token (read permissions) in Render Dashboard
-      - key: HF_MODEL
-        value: Qwen/Qwen2.5-7B-Instruct # or Qwen/Qwen2.5-72B-Instruct, Qwen/Qwen2.5-1.5B-Instruct
-      - key: HF_REGION
-        value: auto # or us-east-1, eu-west-1, ap-southeast-1, or dedicated endpoint region
-      - key: HF_ENDPOINT_URL
-        sync: false # Optional: custom dedicated regional endpoint e.g. https://xxx.us-east-1.endpoints.huggingface.cloud/v1
+        value: auto
+      - key: GROQ_API_KEY
+        sync: false # Optional: Set free Groq API key in Render Dashboard for 24/7 Llama 3.3
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
       - key: ALLOW_MOCK_LLM_FALLBACK
         value: "true"
 
