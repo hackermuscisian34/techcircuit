@@ -69,10 +69,10 @@ def decode_access_token(token: str) -> Optional[dict]:
 class PrincipalResolver:
 
     @staticmethod
-    def resolve_authenticated_user(bearer_envelope: Optional[HTTPAuthorizationCredentials], database_session: Session, token_param: Optional[str] = None) -> User:
-        raw_token = bearer_envelope.credentials if bearer_envelope and bearer_envelope.credentials else token_param
-        if not raw_token:
+    def resolve_authenticated_user(bearer_envelope: Optional[HTTPAuthorizationCredentials], database_session: Session) -> User:
+        if not bearer_envelope or not bearer_envelope.credentials:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Authentication credentials were not provided.', headers={'WWW-Authenticate': 'Bearer'})
+        raw_token = bearer_envelope.credentials
         extracted_claims = JwtTokenSigner.inspect_token(raw_token)
         if not extracted_claims:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid, expired, or malformed authentication token.', headers={'WWW-Authenticate': 'Bearer'})
@@ -85,23 +85,22 @@ class PrincipalResolver:
         return principal
 
     @staticmethod
-    def resolve_optional_user(bearer_envelope: Optional[HTTPAuthorizationCredentials], database_session: Session, token_param: Optional[str] = None) -> Optional[User]:
-        raw_token = bearer_envelope.credentials if bearer_envelope and bearer_envelope.credentials else token_param
-        if not raw_token:
+    def resolve_optional_user(bearer_envelope: Optional[HTTPAuthorizationCredentials], database_session: Session) -> Optional[User]:
+        if not bearer_envelope or not bearer_envelope.credentials:
             return None
         try:
-            extracted_claims = JwtTokenSigner.inspect_token(raw_token)
+            extracted_claims = JwtTokenSigner.inspect_token(bearer_envelope.credentials)
             if not extracted_claims or not extracted_claims.get('sub'):
                 return None
             return database_session.query(User).filter(User.id == extracted_claims['sub'], User.is_active.is_(True)).first()
         except Exception:
             return None
 
-def get_current_user(auth: Optional[HTTPAuthorizationCredentials]=Depends(http_bearer), token: Optional[str]=None, db: Session=Depends(get_db)) -> User:
-    return PrincipalResolver.resolve_authenticated_user(auth, db, token_param=token)
+def get_current_user(auth: Optional[HTTPAuthorizationCredentials]=Depends(http_bearer), db: Session=Depends(get_db)) -> User:
+    return PrincipalResolver.resolve_authenticated_user(auth, db)
 
-def get_optional_current_user(auth: Optional[HTTPAuthorizationCredentials]=Depends(http_bearer), token: Optional[str]=None, db: Session=Depends(get_db)) -> Optional[User]:
-    return PrincipalResolver.resolve_optional_user(auth, db, token_param=token)
+def get_optional_current_user(auth: Optional[HTTPAuthorizationCredentials]=Depends(http_bearer), db: Session=Depends(get_db)) -> Optional[User]:
+    return PrincipalResolver.resolve_optional_user(auth, db)
 
 class RoleGatekeeper:
 

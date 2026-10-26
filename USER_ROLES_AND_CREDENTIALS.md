@@ -4,11 +4,13 @@
 
 ---
 
-## 1. Active Database Accounts & Test Credentials
+## 1. Local Development & Testing Credentials
 
-All extra and legacy test accounts have been purged from the database. The system is populated strictly with the **5 authorized testing accounts** corresponding to the 5 RBAC roles in FIDELIS.
+> [!WARNING]
+> **LOCAL DEVELOPMENT & TESTING ONLY**: The demo accounts and shared passwords (`Password123!`) below are restricted strictly to local development and test environments (`ENVIRONMENT in ('development', 'dev', 'local', 'test')`).
+> In production environments, demo user seeding is disabled (`ENABLE_DEMO_ACCOUNTS=false`) and the startup fails closed if unsafe demo configurations are detected.
 
-| Full Name | Role Display Name | System Role Code | Login Username / Email | Password | Primary Workspace |
+| Full Name | Role Display Name | System Role Code | Login Username / Email | Password (Local Dev Only) | Primary Workspace |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Alfred Biju** | **System Administrator** | `ADMIN` | `alfred@apexdynamics.example`<br>*(or simply `alfred`)* | `Password123!` | ApexDynamics (`ws-apexdynamics-001`) |
 | **Sebin Sabu** | **Brand Manager** | `BRAND_MANAGER` | `sebin@apexdynamics.example`<br>*(or simply `sebin`)* | `Password123!` | ApexDynamics (`ws-apexdynamics-001`) |
@@ -18,6 +20,40 @@ All extra and legacy test accounts have been purged from the database. The syste
 
 > [!TIP]
 > **Flexible Login Input**: The login endpoint supports both full email addresses (e.g. `alfred@apexdynamics.example`) and short first-name usernames (e.g. `alfred`, `sebin`, `albert`, `adhithya`, `biju`).
+
+---
+
+### Production Initial Administrator Provisioning (Bootstrap)
+
+In a fresh production deployment where no accounts exist:
+1. Call `POST /api/v1/auth/bootstrap-admin` with payload:
+   ```json
+   {
+     "email": "lead-admin@yourcompany.com",
+     "password": "<STRONG_RANDOM_PASSWORD_MIN_12_CHARS>",
+     "full_name": "Primary Platform Administrator"
+   }
+   ```
+2. This one-time provisioning endpoint creates the initial `ADMIN` user.
+3. If any active administrator already exists in the system, this endpoint **fails closed** with `HTTP 403 Forbidden` to prevent account hijacking.
+
+---
+
+### Privileged Role Provisioning via Invitations
+
+Public self-registration (`POST /api/v1/auth/register`) strictly creates standard `CREATOR` accounts.
+Privileged roles (`ADMIN`, `BRAND_MANAGER`, `AUTHORISED_REVIEWER`, `APPROVER`) must be invited by an Administrator:
+1. An Administrator creates an invitation via the Admin Portal (`/admin`) or `POST /api/v1/auth/invitations`:
+   ```json
+   {
+     "email": "reviewer@yourcompany.com",
+     "role": "AUTHORISED_REVIEWER",
+     "expires_in_days": 7
+   }
+   ```
+2. The system generates a cryptographically secure, single-use token (`secrets.token_urlsafe(32)`), stores only its SHA-256 digest in the database, and returns an invitation acceptance link.
+3. The invitee visits the link or uses the "Accept Invite" tab on `/login` to set their password and activate their assigned role.
+4. Tokens expire automatically after the configured duration and cannot be reused once accepted.
 
 ---
 

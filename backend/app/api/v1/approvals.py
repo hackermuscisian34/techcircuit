@@ -11,13 +11,16 @@ from app.core.security import get_current_user, require_roles
 from app.core.audit_chain import record_audit_event
 from app.config import settings
 router = APIRouter(prefix='/approvals', tags=['Human Approval Workflow'])
-ALLOWED_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
+ALLOWED_QUEUE_VIEWER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
+ALLOWED_PUBLICATION_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'APPROVER']
+ALLOWED_ASSET_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
+ALLOWED_APPROVER_ROLES = ALLOWED_PUBLICATION_APPROVER_ROLES
 
 @router.get('/queue', response_model=List[ContentSubmissionResponse])
 @router.get('/queue/', response_model=List[ContentSubmissionResponse])
 @router.get('/submissions', response_model=List[ContentSubmissionResponse])
 @router.get('/submissions/', response_model=List[ContentSubmissionResponse])
-def get_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
+def get_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_QUEUE_VIEWER_ROLES)), db: Session=Depends(get_db)):
     submissions = db.query(ContentSubmission).filter(
         ContentSubmission.workspace_id == current_user.workspace_id,
         ContentSubmission.current_status.in_(['SUBMITTED', 'CHANGES_REQUESTED', 'IN_REVIEW', 'AWAITING_APPROVAL'])
@@ -30,7 +33,7 @@ def get_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVE
     return results
 
 @router.post('/{submission_id}', response_model=Dict[str, Any])
-def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate, current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
+def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate, current_user: User=Depends(require_roles(*ALLOWED_PUBLICATION_APPROVER_ROLES)), db: Session=Depends(get_db)):
     sub = db.query(ContentSubmission).filter(ContentSubmission.id == submission_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
     if not sub:
         raise HTTPException(status_code=404, detail='Submission not found.')
@@ -126,12 +129,12 @@ def submit_approval_decision(submission_id: str, payload: ApprovalDecisionCreate
     }
 
 @router.get('/assets', response_model=List[BrandAssetResponse])
-def get_asset_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
+def get_asset_approval_queue(current_user: User=Depends(require_roles(*ALLOWED_ASSET_APPROVER_ROLES)), db: Session=Depends(get_db)):
     assets = db.query(BrandAsset).filter(BrandAsset.workspace_id == current_user.workspace_id, BrandAsset.status == 'PENDING_APPROVAL').order_by(BrandAsset.created_at.desc()).all()
     return assets
 
 @router.post('/assets/{asset_id}', response_model=Dict[str, Any])
-def submit_asset_approval_decision(asset_id: str, payload: BrandAssetApproval, current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
+def submit_asset_approval_decision(asset_id: str, payload: BrandAssetApproval, current_user: User=Depends(require_roles(*ALLOWED_ASSET_APPROVER_ROLES)), db: Session=Depends(get_db)):
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail='Brand asset not found.')

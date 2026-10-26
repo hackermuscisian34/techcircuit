@@ -23,6 +23,15 @@ class FilenameFilter:
 def sanitize_filename(filename: str) -> str:
     return FilenameFilter.clean(filename)
 
+import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as DefusedET
+from defusedxml.common import DefusedXmlException
+
+DISALLOWED_SVG_TAGS = {
+    'script', 'iframe', 'object', 'embed', 'foreignobject', 'applet', 'meta', 'link'
+}
+DANGEROUS_URI_PREFIXES = ('javascript:', 'data:', 'vbscript:')
+
 class SvgSecuritySanitizer:
     SCRUB_OPERATIONS = [
         (re.compile(r'<!DOCTYPE[^>]*>', re.IGNORECASE), ''),
@@ -40,14 +49,90 @@ class SvgSecuritySanitizer:
 
     @classmethod
     def purify(cls, raw_vector_bytes: bytes) -> bytes:
-        try:
-            markup_prose = raw_vector_bytes.decode('utf-8', errors='replace')
-        except Exception:
+        if not raw_vector_bytes:
             return raw_vector_bytes
+
+        removed_count = 0
+        # First pass: Defuse entities and structural AST sanitization
+        try:
+            ET.register_namespace('', 'http://www.w3.org/2000/svg')
+            ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
+            root = DefusedET.fromstring(raw_vector_bytes)
+            
+            for elem in list(root.iter()):
+                for child in list(elem):
+                    tag = child.tag.split('}')[-1].lower() if '}' in child.tag else child.tag.lower()
+                    if tag in DISALLOWED_SVG_TAGS:
+                        elem.remove(child)
+                        removed_count += 1
+                for k, v in list(elem.attrib.items()):
+                    attr = k.split('}')[-1].lower() if '}' in k else k.lower()
+                    if attr.startswith('on'):
+                        del elem.attrib[k]
+                        removed_count += 1
+                    elif 'href' in attr or 'src' in attr:
+                        if any(str(v).lower().strip().startswith(p) for p in DANGEROUS_URI_PREFIXES):
+                            elem.attrib[k] = '#'
+                            removed_count += 1
+            
+            parsed_bytes = ET.tostring(root, encoding='utf-8')
+        except DefusedXmlException:
+            raise ValueError("Dangerous XML entity expansion / XXE detected in SVG.")
+        except Exception:
+            parsed_bytes = raw_vector_bytes
+
+        # Second pass: Defense-in-depth regex scrub
+        try:
+            markup_prose = parsed_bytes.decode('utf-8', errors='replace')
+        except Exception:
+            return parsed_bytes
         processed = markup_prose
         for pattern_re, substitute_val in cls.SCRUB_OPERATIONS:
-            processed = pattern_re.sub(substitute_val, processed)
+            if pattern_re.search(processed):
+                processed = pattern_re.sub(substitute_val, processed)
+                removed_count += 1
         return processed.encode('utf-8')
+
+    @classmethod
+    def sanitize(cls, raw_vector_bytes: bytes) -> Tuple[bytes, int]:
+        removed_count = 0
+        try:
+            ET.register_namespace('', 'http://www.w3.org/2000/svg')
+            ET.register_namespace('xlink', 'http://www.w3.org/1999/xlink')
+            root = DefusedET.fromstring(raw_vector_bytes)
+            
+            for elem in list(root.iter()):
+                for child in list(elem):
+                    tag = child.tag.split('}')[-1].lower() if '}' in child.tag else child.tag.lower()
+                    if tag in DISALLOWED_SVG_TAGS:
+                        elem.remove(child)
+                        removed_count += 1
+                for k, v in list(elem.attrib.items()):
+                    attr = k.split('}')[-1].lower() if '}' in k else k.lower()
+                    if attr.startswith('on'):
+                        del elem.attrib[k]
+                        removed_count += 1
+                    elif 'href' in attr or 'src' in attr:
+                        if any(str(v).lower().strip().startswith(p) for p in DANGEROUS_URI_PREFIXES):
+                            elem.attrib[k] = '#'
+                            removed_count += 1
+            
+            parsed_bytes = ET.tostring(root, encoding='utf-8')
+        except DefusedXmlException:
+            raise ValueError("Dangerous XML entity expansion / XXE detected in SVG.")
+        except Exception:
+            parsed_bytes = raw_vector_bytes
+
+        try:
+            markup_prose = parsed_bytes.decode('utf-8', errors='replace')
+        except Exception:
+            return parsed_bytes, removed_count
+        processed = markup_prose
+        for pattern_re, substitute_val in cls.SCRUB_OPERATIONS:
+            if pattern_re.search(processed):
+                processed = pattern_re.sub(substitute_val, processed)
+                removed_count += 1
+        return processed.encode('utf-8'), removed_count
 
 def sanitize_svg(content_bytes: bytes) -> bytes:
     return SvgSecuritySanitizer.purify(content_bytes)

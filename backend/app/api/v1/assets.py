@@ -174,11 +174,32 @@ def update_asset(asset_id: str, payload: BrandAssetUpdate, current_user: User=De
     record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='ASSET_METADATA_UPDATED', actor_id=current_user.id, actor_role=current_user.role, details={'asset_id': asset.id, 'name': asset.name})
     return asset
 import hashlib
-ALLOWED_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
+import hmac
+import time
+ALLOWED_ASSET_APPROVER_ROLES = ['ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER', 'APPROVER']
+
+@router.get('/{asset_id}/preview-ticket')
+def get_asset_preview_ticket(
+    asset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    asset = db.query(BrandAsset).filter(
+        BrandAsset.id == asset_id,
+        BrandAsset.workspace_id == current_user.workspace_id
+    ).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
+
+    expiry = int(time.time()) + 300  # 5 minutes
+    payload_str = f"{asset_id}:{current_user.id}:{current_user.workspace_id}:{expiry}"
+    sig = hmac.new(settings.SECRET_KEY.encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
+    ticket = f"{payload_str}:{sig}"
+    return {'ticket': ticket, 'expires_at': expiry, 'asset_id': asset_id}
 
 @router.post('/{asset_id}/approval', response_model=BrandAssetResponse)
 @router.post('/{asset_id}/approve', response_model=BrandAssetResponse)
-def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_user: User=Depends(require_roles(*ALLOWED_APPROVER_ROLES)), db: Session=Depends(get_db)):
+def update_asset_approval(asset_id: str, payload: BrandAssetApproval, current_user: User=Depends(require_roles(*ALLOWED_ASSET_APPROVER_ROLES)), db: Session=Depends(get_db)):
     asset = db.query(BrandAsset).filter(BrandAsset.id == asset_id, BrandAsset.workspace_id == current_user.workspace_id).first()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
@@ -249,11 +270,10 @@ def delete_asset(asset_id: str, current_user: User=Depends(require_roles('ADMIN'
 @router.get('/{asset_id}/download')
 def download_asset(
     asset_id: str,
-    token: Optional[str] = Query(None),
     auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
     db: Session = Depends(get_db)
 ):
-    current_user = get_current_user(auth=auth, token=token, db=db)
+    current_user = get_current_user(auth=auth, db=db)
     asset = db.query(BrandAsset).filter(
         BrandAsset.id == asset_id,
         BrandAsset.workspace_id == current_user.workspace_id
@@ -281,17 +301,71 @@ def download_asset(
         content_disposition_type='attachment'
     )
 
-@router.get('/{asset_id}/preview')
-def preview_asset(
+def generate_preview_ticket(asset_id: str, user_id: str, workspace_id: str, secret_key: str, expires_in_seconds: int = 120) -> str:
+    expires_at = int(time.time()) + expires_in_seconds
+    payload_str = f"{asset_id}:{user_id}:{workspace_id}:{expires_at}"
+    sig = hmac.new(secret_key.encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
+    return f"{payload_str}:{sig}"
+
+def verify_preview_ticket(ticket: str, asset_id: str, secret_key: str) -> Optional[str]:
+    parts = ticket.strip().split(':')
+    if len(parts) != 5:
+        return None
+    t_asset_id, t_user_id, t_ws_id, t_exp_str, t_sig = parts
+    if t_asset_id != asset_id:
+        return None
+    try:
+        exp_int = int(t_exp_str)
+    except ValueError:
+        return None
+    if time.time() > exp_int:
+        return None
+    payload_str = f"{t_asset_id}:{t_user_id}:{t_ws_id}:{t_exp_str}"
+    expected_sig = hmac.new(secret_key.encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(t_sig, expected_sig):
+        return None
+    return t_ws_id
+
+@router.post('/{asset_id}/preview-ticket')
+def create_asset_preview_ticket(
     asset_id: str,
-    token: Optional[str] = Query(None),
-    auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    current_user = get_current_user(auth=auth, token=token, db=db)
     asset = db.query(BrandAsset).filter(
         BrandAsset.id == asset_id,
         BrandAsset.workspace_id == current_user.workspace_id
+    ).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Brand asset not found.')
+    ticket = generate_preview_ticket(asset.id, current_user.id, current_user.workspace_id, settings.SECRET_KEY, expires_in_seconds=180)
+    return {'asset_id': asset.id, 'ticket': ticket, 'expires_in_seconds': 180}
+
+@router.get('/{asset_id}/preview')
+def preview_asset(
+    asset_id: str,
+    ticket: Optional[str] = Query(None, description="Short-lived scoped preview ticket"),
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db)
+):
+    target_workspace_id = None
+    if auth and auth.credentials:
+        current_user = get_current_user(auth=auth, db=db)
+        target_workspace_id = current_user.workspace_id
+    elif ticket:
+        target_workspace_id = verify_preview_ticket(ticket, asset_id, settings.SECRET_KEY)
+        if not target_workspace_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid or expired preview ticket.')
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Authentication credentials or preview ticket required.',
+            headers={'WWW-Authenticate': 'Bearer'}
+        )
+
+    asset = db.query(BrandAsset).filter(
+        BrandAsset.id == asset_id,
+        BrandAsset.workspace_id == target_workspace_id
     ).first()
     if not asset or not asset.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Asset file not found.')
@@ -307,8 +381,22 @@ def preview_asset(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid file path.')
     if not full_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Stored asset file is missing.')
+
     media_type = asset.mime_type or 'application/octet-stream'
-    return FileResponse(path=str(full_path), media_type=media_type, content_disposition_type='inline')
+    response_headers = {
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+    }
+    # Enforce strict sandbox and CSP for SVG previews to prevent XSS in application origin
+    if 'svg' in media_type.lower() or full_path.suffix.lower() == '.svg':
+        response_headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type,
+        content_disposition_type='inline',
+        headers=response_headers
+    )
 
 @router.post('/{asset_id}/audit-logo')
 @router.get('/{asset_id}/audit-logo')

@@ -16,17 +16,19 @@ from app.api.v1.governance import router as governance_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.assets import router as assets_router
 
-Base.metadata.create_all(bind=engine)
+if settings.is_development:
+    Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        seed_database()
-    except Exception as e:
-        print(f'Startup notice: {e}')
+    if settings.is_development and settings.ENABLE_DEMO_ACCOUNTS:
+        try:
+            seed_database()
+        except Exception as e:
+            print(f'Startup notice: {e}')
     yield
 
-is_prod = settings.ENVIRONMENT.lower() in ('production', 'prod')
+is_prod = settings.is_production
 raw_origins = settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else [settings.CORS_ORIGINS]
 sanitized_cors_origins = [o for o in raw_origins if o != '*'] if is_prod else raw_origins
 

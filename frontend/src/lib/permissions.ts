@@ -35,6 +35,7 @@ export interface RouteMetadata {
 export const ROLE_ROUTES: Record<UserRole, readonly string[]> = {
   ADMIN: [
     "/dashboard",
+    "/admin",
     "/review",
     "/findings",
     "/approvals",
@@ -84,6 +85,12 @@ export const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     title: "Workspace Dashboard",
     description: "High-level compliance overview, active metrics, recent activity feeds, and quick brand verification.",
     requiredRoles: ["ADMIN", "BRAND_MANAGER", "AUTHORISED_REVIEWER", "CREATOR", "APPROVER"],
+  },
+  "/admin": {
+    path: "/admin",
+    title: "Platform Administration & Security",
+    description: "Manage users, role invitations, workspace status, system diagnostics, and tenant governance.",
+    requiredRoles: ["ADMIN"],
   },
   "/review": {
     path: "/review",

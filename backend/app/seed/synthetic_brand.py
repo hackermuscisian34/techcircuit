@@ -28,26 +28,23 @@ def seed_database(db: Session=None, is_test: bool=False):
             ws.slug = 'brand-workspace'
             db.flush()
 
-        if is_prod and not settings.ENABLE_DEMO_ACCOUNTS and not is_test:
-            # In strict production without demo accounts, do not seed demo credentials
+        if settings.is_production or (not settings.ENABLE_DEMO_ACCOUNTS and not is_test):
+            # In strict production or when demo accounts are disabled, do not seed demo credentials
             pass
         else:
-            allowed_user_ids = [u['id'] for u in DEMO_USERS]
             for u_data in DEMO_USERS:
                 existing_user = db.query(User).filter((User.id == u_data['id']) | (User.email == u_data['email'])).first()
                 if not existing_user:
-                    new_user = User(id=u_data['id'], workspace_id=WORKSPACE_ID, email=u_data['email'], full_name=u_data['full_name'], role=u_data['role'], hashed_password=hash_password(u_data['password']))
+                    new_user = User(
+                        id=u_data['id'],
+                        workspace_id=WORKSPACE_ID,
+                        email=u_data['email'],
+                        full_name=u_data['full_name'],
+                        role=u_data['role'],
+                        hashed_password=hash_password(u_data['password']),
+                    )
                     db.add(new_user)
-                else:
-                    existing_user.id = u_data['id']
-                    existing_user.email = u_data['email']
-                    existing_user.full_name = u_data['full_name']
-                    existing_user.role = u_data['role']
-                    existing_user.hashed_password = hash_password(u_data['password'])
             db.flush()
-            if not is_prod:
-                db.query(User).filter(~User.id.in_(allowed_user_ids)).delete(synchronize_session=False)
-                db.flush()
         existing_rb = db.query(Rulebook).filter(Rulebook.workspace_id == WORKSPACE_ID, Rulebook.status == 'ACTIVE').first()
         if not existing_rb:
             rb = Rulebook(id='rb-apexdynamics-v1', workspace_id=WORKSPACE_ID, version='1.0.0', title='ApexDynamics Brand Guard', description='Active enterprise brand rulebook', status='ACTIVE')

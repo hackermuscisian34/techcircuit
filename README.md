@@ -96,21 +96,31 @@ npm run dev
 
 ## Testing & Build Commands
 
-### Run Backend Tests (56 Tests)
+### Run Backend Tests (107 Tests)
 ```bash
 cd backend
 .venv/bin/pytest tests/ -v
 ```
 
+### Run Disaster Recovery Backup & Restore Drill
+```bash
+backend/.venv/bin/python scripts/backup_restore.py test-cycle
+```
+
 ### Build Frontend Production Bundle
 ```bash
 cd frontend
+npm run lint
 npm run build
 ```
 
 ---
 
-## Default Testing Accounts
+## Local Development & Testing Accounts (Non-Production Only)
+
+> [!WARNING]
+> These credentials and accounts are intended **strictly for local development and offline test environments**.
+> In production environments (`ENVIRONMENT=production`), public registration is strictly constrained to `CREATOR`, privileged roles (`ADMIN`, `BRAND_MANAGER`, `AUTHORISED_REVIEWER`, `APPROVER`) are provisioned exclusively via cryptographically signed single-use invitation tokens, and the initial administrator is bootstrapped through a controlled, one-time `/api/v1/auth/bootstrap-admin` invocation.
 
 | Role | Name | Email | Password |
 | :--- | :--- | :--- | :--- |
@@ -120,5 +130,4 @@ npm run build
 | **Content Creator** | Adhithya Biju | `creator@fidelis.example` | `Password123!` |
 | **Executive Approver** | Biju | `approver@fidelis.example` | `Password123!` |
 
-*(Full role descriptions and RBAC permissions are documented in `USER_ROLES_AND_CREDENTIALS.md`).*
-The Server Connection History feature maintains a detailed log of previous SSH sessions, including server IP addresses, connection timestamps, executed commands, execution status, and error messages. It allows users to review past activities, troubleshoot connection issues, track command execution, and export logs for auditing. This feature improves transparency, simplifies debugging, and makes managing multiple servers more efficient and secure.
+*(Full role descriptions, RBAC matrix, and invitation flows are documented in `USER_ROLES_AND_CREDENTIALS.md`).*

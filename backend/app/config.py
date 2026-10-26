@@ -87,9 +87,16 @@ class Settings(BaseSettings):
             or os.environ.get('HUGGINGFACE_API_KEY')
         )
 
+    @property
+    def is_development(self) -> bool:
+        return self.ENVIRONMENT.lower() in ('development', 'dev', 'local', 'test', 'testing')
+
+    @property
+    def is_production(self) -> bool:
+        return not self.is_development
+
     def validate_production_settings(self) -> None:
-        is_prod = self.ENVIRONMENT.lower() in ('production', 'prod')
-        if is_prod:
+        if self.is_production:
             insecure_keys = (
                 'canon-hackathon-super-secret-key-change-in-production',
                 'secret',
@@ -99,21 +106,21 @@ class Settings(BaseSettings):
             )
             if not self.SECRET_KEY or self.SECRET_KEY in insecure_keys or len(self.SECRET_KEY) < 32:
                 raise ValueError(
-                    'FATAL SECURITY: Insecure or insufficient SECRET_KEY in production. '
+                    f'FATAL SECURITY: Insecure or insufficient SECRET_KEY in {self.ENVIRONMENT} environment. '
                     'Must be a cryptographically strong secret of at least 32 characters.'
                 )
             if self.ENABLE_DEV_PERSONA_SWITCHING:
                 raise ValueError(
-                    'FATAL SECURITY: ENABLE_DEV_PERSONA_SWITCHING must be False in production.'
+                    f'FATAL SECURITY: ENABLE_DEV_PERSONA_SWITCHING must be False in non-development ({self.ENVIRONMENT}) environments.'
                 )
             if self.ENABLE_DEMO_ACCOUNTS:
                 raise ValueError(
-                    'FATAL SECURITY: ENABLE_DEMO_ACCOUNTS must be False in production.'
+                    f'FATAL SECURITY: ENABLE_DEMO_ACCOUNTS must be False in non-development ({self.ENVIRONMENT}) environments.'
                 )
             cors = self.CORS_ORIGINS if isinstance(self.CORS_ORIGINS, list) else [self.CORS_ORIGINS]
             if '*' in cors:
                 raise ValueError(
-                    "FATAL SECURITY: Wildcard '*' CORS origin is strictly forbidden in production with credentials."
+                    f"FATAL SECURITY: Wildcard '*' CORS origin is strictly forbidden in non-development ({self.ENVIRONMENT}) environments."
                 )
         elif self.SECRET_KEY == 'canon-hackathon-super-secret-key-change-in-production':
             import warnings

@@ -22,6 +22,22 @@ class Workspace(Base):
     submissions = relationship('ContentSubmission', back_populates='workspace', cascade='all, delete-orphan')
     audit_events = relationship('AuditEvent', back_populates='workspace', cascade='all, delete-orphan')
     brand_assets = relationship('BrandAsset', back_populates='workspace', cascade='all, delete-orphan')
+    invitations = relationship('Invitation', back_populates='workspace', cascade='all, delete-orphan')
+
+class Invitation(Base):
+    __tablename__ = 'invitations'
+    id = Column(String, primary_key=True, default=generate_uuid)
+    workspace_id = Column(String, ForeignKey('workspaces.id'), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(String(50), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    invited_by_id = Column(String, ForeignKey('users.id'), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    workspace = relationship('Workspace', back_populates='invitations')
+    invited_by = relationship('User', foreign_keys=[invited_by_id])
 
 class User(Base):
     __tablename__ = 'users'

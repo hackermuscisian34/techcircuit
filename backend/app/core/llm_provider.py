@@ -224,26 +224,28 @@ class LLMProvider:
         t_zero = time.time()
         fortified_instruction = InferenceDefenseWrapper.wrap(system_prompt)
         last_error = None
+        is_local_only = self.provider in ('local', 'ollama')
 
-        # 1. Try Groq Cloud Open-Source inference if configured (24/7 cloud when laptop is off)
-        groq_key = self.groq_api_key or os.environ.get('GROQ_API_KEY')
-        if groq_key or self.provider == 'groq':
-            try:
-                return await self._generate_groq(fortified_instruction, user_prompt, t_zero)
-            except Exception as groq_err:
-                last_error = groq_err
+        # 1. Try Groq Cloud Open-Source inference ONLY if not in local-only mode
+        if not is_local_only:
+            groq_key = self.groq_api_key or os.environ.get('GROQ_API_KEY')
+            if (groq_key and self.provider in ('auto', 'groq')) or self.provider == 'groq':
+                try:
+                    return await self._generate_groq(fortified_instruction, user_prompt, t_zero)
+                except Exception as groq_err:
+                    last_error = groq_err
 
-        # 2. Try Hugging Face ONLY if explicitly designated and token provided
-        effective_token = settings.effective_hf_token or self.hf_token
-        should_try_hf = (self.provider == 'huggingface') and bool(effective_token)
-        if should_try_hf:
-            try:
-                return await self._generate_huggingface(fortified_instruction, user_prompt, t_zero)
-            except Exception as hf_err:
-                last_error = hf_err
+        # 2. Try Hugging Face ONLY if explicitly designated, token provided, and not local-only
+        if not is_local_only and self.provider == 'huggingface':
+            effective_token = settings.effective_hf_token or self.hf_token
+            if effective_token:
+                try:
+                    return await self._generate_huggingface(fortified_instruction, user_prompt, t_zero)
+                except Exception as hf_err:
+                    last_error = hf_err
 
         # 3. Try local Ollama if designated or running
-        should_try_ollama = (self.provider == 'ollama') or (self.provider == 'auto' and not should_try_hf)
+        should_try_ollama = is_local_only or (self.provider == 'auto')
         if should_try_ollama:
             try:
                 return await self._generate_ollama(fortified_instruction, user_prompt, t_zero)
@@ -263,6 +265,7 @@ class LLMProvider:
                     'latency_ms': elapsed,
                     'is_local': True,
                     'is_fallback': True,
+                    'partial_review_warning': 'AI review is temporarily unavailable. Your document was checked against deterministic brand rules only. AI-assisted checks have not been completed.',
                     'privacy_mode': 'Local Offline Verified',
                     'prompt_injection_screened': True
                 }

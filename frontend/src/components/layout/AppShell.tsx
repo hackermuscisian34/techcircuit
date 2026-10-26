@@ -169,7 +169,15 @@ const PUBLIC_VIEW_CHANNELS = new Set(["/", "/login", "/intro"]);
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const [currentRole, setCurrentRole] = useState<UserRole>("ADMIN");
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    if (typeof window !== "undefined") {
+      const storedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
+      if (storedRole && ["ADMIN", "BRAND_MANAGER", "CREATOR", "AUTHORISED_REVIEWER", "APPROVER"].includes(storedRole.toUpperCase())) {
+        return storedRole.toUpperCase() as UserRole;
+      }
+    }
+    return "CREATOR";
+  });
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {

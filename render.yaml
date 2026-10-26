@@ -7,27 +7,28 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: hackathon
+        value: production
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///./canon.db
-
-      # Pre-trained Open-Source LLM Settings (Groq / Open-Source Cloud or Heuristic Engine)
+        sync: false # Set managed PostgreSQL connection string in Render Dashboard
+      - key: ENABLE_DEMO_ACCOUNTS
+        value: "false"
+      - key: ENABLE_DEV_PERSONA_SWITCHING
+        value: "false"
       - key: LLM_PROVIDER
         value: auto
       - key: GROQ_API_KEY
-        sync: false # Optional: Set free Groq API key in Render Dashboard for 24/7 Llama 3.3
+        sync: false # Set Groq API key in Render Dashboard
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: ALLOW_MOCK_LLM_FALLBACK
-        value: "true"
-
-      # Cross-Origin Resource Sharing for Vercel Frontend
+        value: "false"
+      # Cross-Origin Resource Sharing for Production Frontend
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://fidelis.vercel.app,http://localhost:3000"

@@ -53,7 +53,7 @@ const ROLE_OPTION_DEFINITIONS = [
 
 export default function LoginPage() {
   const navigatorRouter = useRouter();
-  const [activeTabMode, setActiveTabMode] = useState<"register" | "login">("register");
+  const [activeTabMode, setActiveTabMode] = useState<"register" | "login" | "invite">("register");
 
   const [signinEmail, setSigninEmail] = useState("");
   const [signinSecret, setSigninSecret] = useState("");
@@ -61,7 +61,10 @@ export default function LoginPage() {
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupSecret, setSignupSecret] = useState("");
-  const [chosenRole, setChosenRole] = useState<AuthRole>("CREATOR");
+
+  const [inviteToken, setInviteToken] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteSecret, setInviteSecret] = useState("");
 
   const [isBusy, setIsBusy] = useState(false);
   const [alertError, setAlertError] = useState<string | null>(null);
@@ -88,7 +91,17 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       const specifiedTab = searchParams.get("tab");
-      setActiveTabMode(specifiedTab === "login" ? "login" : "register");
+      const tokenParam = searchParams.get("token") || searchParams.get("invite");
+      if (tokenParam) {
+        setInviteToken(tokenParam);
+        setActiveTabMode("invite");
+      } else if (specifiedTab === "login") {
+        setActiveTabMode("login");
+      } else if (specifiedTab === "invite") {
+        setActiveTabMode("invite");
+      } else {
+        setActiveTabMode("register");
+      }
     }
   }, [fetchSessionRecord]);
 
@@ -171,7 +184,7 @@ export default function LoginPage() {
         email: candidateEmail,
         full_name: candidateName,
         password: candidateSecret,
-        role: chosenRole,
+        role: "CREATOR",
       });
 
       localStorage.setItem("fidelis_token", confirmation.access_token);
@@ -198,7 +211,7 @@ export default function LoginPage() {
       };
 
       setActiveSessionUser(newlyRegistered);
-      setAlertSuccess(`🌟 Account created successfully for ${confirmation.full_name}! You are now logged in.`);
+      setAlertSuccess(`🌟 Account created successfully for ${confirmation.full_name}! You are now logged in as Content Creator.`);
 
       setSignupName("");
       setSignupEmail("");
@@ -209,6 +222,72 @@ export default function LoginPage() {
       }, 1200);
     } catch (failure: any) {
       setAlertError(failure.message || "Could not create account. That email might already be registered. Try signing in!");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const dispatchAcceptInvitation = async (evt: React.FormEvent) => {
+    evt.preventDefault();
+    const token = inviteToken.trim();
+    const candidateName = inviteName.trim();
+    const candidateSecret = inviteSecret.trim();
+
+    if (!token) {
+      setAlertError("Please enter your invitation token.");
+      return;
+    }
+    if (!candidateName) {
+      setAlertError("Please enter your full name.");
+      return;
+    }
+    if (!candidateSecret || candidateSecret.length < 8) {
+      setAlertError("Please choose a password with at least 8 characters.");
+      return;
+    }
+
+    setIsBusy(true);
+    setAlertError(null);
+    setAlertSuccess(null);
+
+    try {
+      const confirmation = await api.acceptInvitation({
+        token,
+        full_name: candidateName,
+        password: candidateSecret,
+      });
+
+      localStorage.setItem("fidelis_token", confirmation.access_token);
+      localStorage.setItem("fidelis_user_id", confirmation.user_id);
+      localStorage.setItem("fidelis_user_role", confirmation.role);
+      localStorage.setItem("fidelis_user_name", confirmation.full_name);
+      localStorage.setItem("fidelis_user_email", confirmation.email);
+      localStorage.setItem("canon_token", confirmation.access_token);
+      localStorage.setItem("canon_user_id", confirmation.user_id);
+      localStorage.setItem("canon_user_role", confirmation.role);
+      localStorage.setItem("canon_user_name", confirmation.full_name);
+      localStorage.setItem("canon_user_email", confirmation.email);
+
+      window.dispatchEvent(new Event("fidelis_user_changed"));
+      window.dispatchEvent(new Event("canon_user_changed"));
+      window.dispatchEvent(new Event("storage"));
+
+      const newlyRegistered: UserType = {
+        id: confirmation.user_id,
+        email: confirmation.email,
+        full_name: confirmation.full_name,
+        role: confirmation.role,
+        workspace_id: confirmation.workspace_id,
+      };
+
+      setActiveSessionUser(newlyRegistered);
+      setAlertSuccess(`🌟 Invitation accepted! Welcome ${confirmation.full_name} (${confirmation.role.replace("_", " ")}). Taking you to your workspace...`);
+
+      setTimeout(() => {
+        navigatorRouter.push("/dashboard");
+      }, 1200);
+    } catch (failure: any) {
+      setAlertError(failure.message || "Failed to accept invitation. It may be expired, invalid, or already accepted.");
     } finally {
       setIsBusy(false);
     }
@@ -334,7 +413,7 @@ export default function LoginPage() {
         <SpotlightCard className="max-w-xl mx-auto w-full p-7 sm:p-9 relative">
           <BorderBeam duration={9} size={200} colorFrom="#FF8A3D" colorTo="#FFAE74" />
 
-          <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-[#FFF5EC] border border-[#F4E2D3] mb-6">
+          <div className="grid grid-cols-3 gap-1.5 p-1.5 rounded-2xl bg-[#FFF5EC] border border-[#F4E2D3] mb-6">
             <button
               id="tab-register-btn"
               type="button"
@@ -343,14 +422,14 @@ export default function LoginPage() {
                 setAlertError(null);
                 setAlertSuccess(null);
               }}
-              className={`py-3 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTabMode === "register"
                   ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-sm shadow-[#FF8A3D]/30"
                   : "text-[#7C6A5E] hover:text-[#201815]"
               }`}
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Create Account</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Register</span>
             </button>
 
             <button
@@ -361,14 +440,32 @@ export default function LoginPage() {
                 setAlertError(null);
                 setAlertSuccess(null);
               }}
-              className={`py-3 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTabMode === "login"
                   ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-sm shadow-[#FF8A3D]/30"
                   : "text-[#7C6A5E] hover:text-[#201815]"
               }`}
             >
-              <Lock className="w-4 h-4" />
+              <Lock className="w-3.5 h-3.5" />
               <span>Sign In</span>
+            </button>
+
+            <button
+              id="tab-invite-btn"
+              type="button"
+              onClick={() => {
+                setActiveTabMode("invite");
+                setAlertError(null);
+                setAlertSuccess(null);
+              }}
+              className={`py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTabMode === "invite"
+                  ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-sm shadow-[#FF8A3D]/30"
+                  : "text-[#7C6A5E] hover:text-[#201815]"
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Accept Invite</span>
             </button>
           </div>
 
@@ -392,10 +489,10 @@ export default function LoginPage() {
             <form onSubmit={dispatchRegistration} className="space-y-4">
               <div className="pb-1">
                 <h2 className="text-sm font-extrabold text-[#201815]">
-                  Account Details:
+                  Creator Account Registration:
                 </h2>
                 <p className="text-[11px] text-[#7C6A5E]">
-                  Create your account with your designated governance role
+                  Create your workspace account with Content Creator permissions
                 </p>
               </div>
 
@@ -445,54 +542,18 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-[#201815] block mb-1.5 cursor-pointer">
-                  3. Select Your Role
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {ROLE_OPTION_DEFINITIONS.map((roleItem) => {
-                    const isSelected = chosenRole === roleItem.id;
-                    const IconComponent = roleItem.icon;
-                    return (
-                      <button
-                        key={roleItem.id}
-                        type="button"
-                        onClick={() => setChosenRole(roleItem.id)}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
-                          isSelected
-                            ? "bg-[#FFF5EC] border-[#FF8A3D] shadow-xs"
-                            : "bg-white border-[#F4E2D3] hover:border-[#FFAE74]"
-                        }`}
-                      >
-                        <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                            isSelected
-                              ? "bg-gradient-to-br from-[#FF8A3D] to-[#FF721B] text-white"
-                              : "bg-[#FFF9F3] text-[#7C6A5E] border border-[#F4E2D3]"
-                          }`}
-                        >
-                          <IconComponent className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <div
-                            className={`text-xs font-extrabold ${
-                              isSelected ? "text-[#D95D0D]" : "text-[#201815]"
-                            }`}
-                          >
-                            {roleItem.title}
-                          </div>
-                          <p className="text-[10px] text-[#7C6A5E] leading-tight mt-0.5">
-                            {roleItem.desc}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
+              <div className="p-3.5 rounded-xl bg-[#FFF9F3] border border-[#FDBA74] flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-[#D95D0D] shrink-0" />
+                <div className="text-xs text-[#201815]">
+                  <span className="font-extrabold text-[#D95D0D]">Standard Registration:</span> Public accounts are provisioned as <strong>Content Creator</strong>. If you are an Approver, Reviewer, or Brand Manager, please ask your Administrator for an invitation or{" "}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTabMode("invite")}
+                    className="underline font-bold text-[#D95D0D] cursor-pointer"
+                  >
+                    accept an invitation here →
+                  </button>
                 </div>
-                <p className="text-[10px] text-[#A49184] mt-1.5 flex items-center gap-1">
-                  <Shield className="w-3 h-3 text-[#FF8A3D]" />
-                  <span>System Administrator (Admin) accounts are protected and cannot be self-registered.</span>
-                </p>
               </div>
 
               <div>
@@ -619,6 +680,110 @@ export default function LoginPage() {
                   className="w-full py-2.5 rounded-xl bg-[#FFF5EC] hover:bg-[#FFEAD9] text-[#D95D0D] border border-[#FDBA74] text-xs font-bold transition-colors cursor-pointer"
                 >
                   ✨ Don&apos;t have an account? Click to Create Account
+                </button>
+              </div>
+            </form>
+          )}
+
+          {activeTabMode === "invite" && (
+            <form onSubmit={dispatchAcceptInvitation} className="space-y-4">
+              <div>
+                <h2 className="text-sm font-extrabold text-[#201815]">
+                  Accept Workspace Invitation:
+                </h2>
+                <p className="text-[11px] text-[#7C6A5E]">
+                  Enter your invitation token and complete your profile to activate your governance role
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="invite-token"
+                  className="text-xs font-bold text-[#201815] block mb-1.5 cursor-pointer"
+                >
+                  1. Invitation Token
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-[#7C6A5E] absolute left-3.5 top-3 pointer-events-none" />
+                  <input
+                    id="invite-token"
+                    name="token"
+                    type="text"
+                    required
+                    value={inviteToken}
+                    onChange={(e) => setInviteToken(e.target.value)}
+                    placeholder="Paste your invitation token..."
+                    className="editorial-input w-full pl-10 pr-3 py-2.5 text-xs font-medium font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="invite-fullname"
+                  className="text-xs font-bold text-[#201815] block mb-1.5 cursor-pointer"
+                >
+                  2. Your Full Name
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-[#7C6A5E] absolute left-3.5 top-3 pointer-events-none" />
+                  <input
+                    id="invite-fullname"
+                    name="fullname"
+                    type="text"
+                    required
+                    autoComplete="name"
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                    placeholder="e.g. Maya Patel"
+                    className="editorial-input w-full pl-10 pr-3 py-2.5 text-xs font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="invite-password"
+                  className="text-xs font-bold text-[#201815] block mb-1.5 cursor-pointer"
+                >
+                  3. Set Password (min 8 chars)
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-[#7C6A5E] absolute left-3.5 top-3 pointer-events-none" />
+                  <input
+                    id="invite-password"
+                    name="password"
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    value={inviteSecret}
+                    onChange={(e) => setInviteSecret(e.target.value)}
+                    placeholder="Create your secure password..."
+                    className="editorial-input w-full pl-10 pr-3 py-2.5 text-xs font-medium"
+                  />
+                </div>
+              </div>
+
+              <button
+                id="btn-accept-invite"
+                type="submit"
+                disabled={isBusy}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] hover:from-[#FF9952] hover:to-[#E8630D] text-white text-xs font-extrabold transition-all shadow-md shadow-[#FF8A3D]/25 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                <span>{isBusy ? "Activating Role & Account..." : "✨ Accept Invitation & Activate Account"}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTabMode("login");
+                    setAlertError(null);
+                  }}
+                  className="text-xs text-[#7C6A5E] hover:text-[#201815] font-semibold cursor-pointer"
+                >
+                  Already have an active account? <span className="text-[#D95D0D] font-bold">Sign In here →</span>
                 </button>
               </div>
             </form>

@@ -244,7 +244,10 @@ export default function AuditTrailPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
-                          {new Date(ev.created_at || ev.timestamp || Date.now()).toLocaleString()}
+                          {(() => {
+                            const eventTime = ev.created_at || ev.timestamp;
+                            return eventTime ? new Date(eventTime).toLocaleString() : "Recorded";
+                          })()}
                         </span>
                       </div>
                     </div>

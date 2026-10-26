@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class Token(BaseModel):
     access_token: str
@@ -25,13 +25,64 @@ class UserResponse(UserBase):
     workspace_id: str
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+class InvitationCreate(BaseModel):
+    email: str
+    role: str
+    expires_in_hours: Optional[int] = 72
+
+class InvitationResponse(BaseModel):
+    id: str
+    workspace_id: str
+    email: str
+    role: str
+    expires_at: datetime
+    is_used: bool
+    created_at: datetime
+    invite_token: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class InvitationAccept(BaseModel):
+    token: str
+    full_name: str
+    password: str
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+class RoleUpdateRequest(BaseModel):
+    role: str
+
+class PasswordResetRequest(BaseModel):
+    new_password: str
+
+class BootstrapAdminRequest(BaseModel):
+    email: str
+    full_name: str
+    password: str
+    bootstrap_token: Optional[str] = None
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    active_users: int
+    deactivated_users: int
+    total_workspaces: int
+    pending_invitations: int
+    total_submissions: int
+    total_reviews: int
+    total_audit_events: int
+    active_llm_provider: str
+    active_llm_model: str
+    llm_local_only: bool
+    database_status: str
+    storage_status: str
+    audit_chain_valid: bool
+    last_backup_timestamp: Optional[str] = None
 
 class RuleTestCaseBase(BaseModel):
     input_text: str

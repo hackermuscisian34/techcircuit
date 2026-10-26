@@ -339,31 +339,10 @@ export default function BrandAssetsPage() {
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-[#F4E2D3] shadow-2xs">
             <UserCheck className="w-4 h-4 text-[#EA580C] shrink-0" />
             <div className="flex flex-col text-left">
-              <span className="text-[9px] font-bold text-[#7C6A5E] uppercase tracking-wider leading-none">Reviewer Persona</span>
-              <select
-                value={userRole}
-                onChange={async (e) => {
-                  const targetRole = e.target.value as any;
-                  try {
-                    await api.switchPersona(targetRole);
-                    setUserRole(targetRole);
-                    const name = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name") || targetRole;
-                    setUserName(name);
-                    showToast(`Active persona switched to ${name} (${targetRole})`);
-                    loadData();
-                  } catch (err: any) {
-                    showToast(`Could not switch persona: ${err.message}`);
-                  }
-                }}
-                className="text-xs font-bold text-[#21160F] bg-transparent outline-none cursor-pointer py-0.5"
-                title="Switch active user persona to test RBAC approval workflows"
-              >
-                <option value="APPROVER">Biju (Executive Approver)</option>
-                <option value="ADMIN">Alfred Biju (Admin)</option>
-                <option value="BRAND_MANAGER">Sebin Sabu (Brand Manager)</option>
-                <option value="AUTHORISED_REVIEWER">Albert Biju (Compliance Reviewer)</option>
-                <option value="CREATOR">Adhithya Biju (Content Creator)</option>
-              </select>
+              <span className="text-[9px] font-bold text-[#7C6A5E] uppercase tracking-wider leading-none">Signed In As</span>
+              <span className="text-xs font-bold text-[#21160F] py-0.5">
+                {userName} <span className="text-[#D95D0D]">({userRole.replace("_", " ")})</span>
+              </span>
             </div>
           </div>
 
@@ -1307,27 +1286,10 @@ export default function BrandAssetsPage() {
                   <div>
                     <div className="text-xs font-bold text-[#21160F]">Approval Authority Required</div>
                     <div className="text-[11px] text-[#7C6A5E]">
-                      Current session: <strong className="text-[#21160F]">{userName} ({userRole})</strong>. Governance rules require sign-off from an Approver or Admin.
+                      Current session: <strong className="text-[#21160F]">{userName} ({userRole.replace("_", " ")})</strong>. Governance rules require sign-off from an Approver, Brand Manager, or Admin.
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await api.switchPersona("APPROVER");
-                      setUserRole("APPROVER");
-                      setUserName("Biju");
-                      showToast("Switched to Biju (Executive Approver)!");
-                      loadData();
-                    } catch (err: any) {
-                      showToast(`Could not switch role: ${err.message}`);
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-[#EA580C] hover:bg-[#D95D0D] text-white text-xs font-bold transition-all shadow-2xs whitespace-nowrap cursor-pointer shrink-0"
-                >
-                  Sign Off as Approver
-                </button>
               </div>
             )}
 

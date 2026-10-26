@@ -6,8 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, BookOpen, Database, FileCheck2,
   AlertCircle, CheckSquare, Palette, BarChart3,
-  ShieldCheck, Cpu, HelpCircle, LogOut, Menu, X,
-  Sparkles, Zap, ChevronRight, Terminal, Lock
+  ShieldCheck, ShieldAlert, Cpu, HelpCircle, LogOut, Menu, X,
+  Sparkles, Zap, ChevronRight, Terminal, Lock, Users, Check
 } from "lucide-react";
 import {
   UserRole,
@@ -21,39 +21,99 @@ interface NavigationItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  group: string;
+  group: "admin" | "core" | "compliance" | "governance" | "oversight" | "support";
   badge?: string;
 }
 
 const NAV_DIRECTORY: readonly NavigationItem[] = [
+  // 1. Platform Administration (ADMIN ONLY)
+  { name: "Admin Portal", href: "/admin", icon: ShieldAlert, group: "admin", badge: "RBAC" },
+  { name: "Platform Settings", href: "/settings", icon: Cpu, group: "admin" },
+
+  // 2. Core Workspace (ALL ROLES)
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "core" },
-  { name: "Review Content", href: "/review", icon: FileCheck2, group: "core", badge: "HOT" },
-  { name: "Review Findings", href: "/findings", icon: AlertCircle, group: "core" },
-  { name: "Approvals", href: "/approvals", icon: CheckSquare, group: "core" },
-  { name: "Brand Rules", href: "/rulebook", icon: BookOpen, group: "library" },
-  { name: "Approved Facts", href: "/facts", icon: Database, group: "library" },
-  { name: "Brand Assets", href: "/assets", icon: Palette, group: "library", badge: "NEW" },
-  { name: "Analytics", href: "/insights", icon: BarChart3, group: "intel" },
-  { name: "Audit History", href: "/audit", icon: ShieldCheck, group: "intel" },
-  { name: "User Guide", href: "/guide", icon: HelpCircle, group: "system" },
-  { name: "Settings", href: "/settings", icon: Cpu, group: "system" },
+  { name: "Review Studio", href: "/review", icon: FileCheck2, group: "core", badge: "STUDIO" },
+
+  // 3. Compliance & Approvals (REVIEWER, APPROVER, ADMIN)
+  { name: "Review Findings", href: "/findings", icon: AlertCircle, group: "compliance" },
+  { name: "Approval Queue", href: "/approvals", icon: CheckSquare, group: "compliance" },
+
+  // 4. Brand Guidelines & Assets (BRAND_MANAGER, REVIEWER, APPROVER, ADMIN)
+  { name: "Brand Rules", href: "/rulebook", icon: BookOpen, group: "governance" },
+  { name: "Approved Facts", href: "/facts", icon: Database, group: "governance" },
+  { name: "Brand Assets", href: "/assets", icon: Palette, group: "governance", badge: "ASSETS" },
+
+  // 5. Oversight & Ledger (BRAND_MANAGER, APPROVER, ADMIN)
+  { name: "Governance Insights", href: "/insights", icon: BarChart3, group: "oversight" },
+  { name: "Audit Ledger", href: "/audit", icon: ShieldCheck, group: "oversight" },
+
+  // 6. Platform Handbook (ALL ROLES)
+  { name: "User Guide", href: "/guide", icon: HelpCircle, group: "support" },
 ];
 
 const GROUP_TITLES: Record<string, string> = {
-  core: "Review & Approvals",
-  library: "Brand Guidelines",
-  intel: "Reports & History",
-  system: "Help & Settings",
+  admin: "Platform Administration",
+  core: "Content & Workspace",
+  compliance: "Compliance & Approvals",
+  governance: "Brand Rules & Assets",
+  oversight: "Audit & Analytics",
+  support: "Platform Handbook",
 };
+
+const DEMO_PERSONAS = [
+  { role: "ADMIN", name: "Alfred Biju", email: "alfred@apexdynamics.example", title: "System Administrator" },
+  { role: "BRAND_MANAGER", name: "Sebin Sabu", email: "sebin@apexdynamics.example", title: "Brand Manager" },
+  { role: "AUTHORISED_REVIEWER", name: "Albert Biju", email: "albert@apexdynamics.example", title: "Compliance Reviewer" },
+  { role: "CREATOR", name: "Adhithya Biju", email: "adhithya@apexdynamics.example", title: "Content Creator" },
+  { role: "APPROVER", name: "Biju", email: "biju@apexdynamics.example", title: "Executive Approver" },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [, setMounted] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
-  const [currentRole, setCurrentRole] = useState<UserRole>("ADMIN");
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    if (typeof window !== "undefined") {
+      const savedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
+      if (savedRole && ["ADMIN", "BRAND_MANAGER", "CREATOR", "AUTHORISED_REVIEWER", "APPROVER"].includes(savedRole.toUpperCase())) {
+        return savedRole.toUpperCase() as UserRole;
+      }
+    }
+    return "CREATOR";
+  });
+  const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+
+  const handleSwitchPersona = (persona: typeof DEMO_PERSONAS[0]) => {
+    localStorage.setItem("fidelis_user_role", persona.role);
+    localStorage.setItem("fidelis_user_name", persona.name);
+    localStorage.setItem("fidelis_user_email", persona.email);
+    localStorage.setItem("canon_user_role", persona.role);
+    localStorage.setItem("canon_user_name", persona.name);
+    localStorage.setItem("canon_user_email", persona.email);
+
+    setCurrentRole(persona.role as UserRole);
+    setCurrentUser({
+      id: `usr-${persona.role.toLowerCase()}-01`,
+      email: persona.email,
+      full_name: persona.name,
+      role: persona.role as any,
+      workspace_id: "ws-primary-001",
+    });
+
+    setShowRoleSelector(false);
+    window.dispatchEvent(new Event("fidelis_user_changed"));
+    window.dispatchEvent(new Event("canon_user_changed"));
+    window.dispatchEvent(new Event("storage"));
+
+    const allowed = getAllowedRoutesForRole(persona.role as UserRole);
+    const isCurrentAllowed = allowed.some((r) => pathname === r || (r !== "/" && pathname.startsWith(`${r}/`)));
+    if (!isCurrentAllowed) {
+      router.push(persona.role === "ADMIN" ? "/admin" : "/dashboard");
+    }
+  };
 
   const syncActiveUser = () => {
     const savedId = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id")) : null;
@@ -277,14 +337,46 @@ export function Sidebar() {
                 >
                   {currentRole}
                 </span>
-                <Link
-                  href="/login"
-                  className="font-bold text-[#7C6A5E] hover:text-[#D95D0D] transition-colors underline decoration-dotted"
-                  title="Switch between the 5 test accounts"
+                <button
+                  type="button"
+                  onClick={() => setShowRoleSelector(!showRoleSelector)}
+                  className="font-bold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Switch active role to test RBAC and role-specific routes"
                 >
-                  Switch Role
-                </Link>
+                  <Users className="w-3 h-3" />
+                  <span>{showRoleSelector ? "Close" : "Switch Role"}</span>
+                </button>
               </div>
+
+              {showRoleSelector && (
+                <div className="mt-2.5 p-2 rounded-xl bg-white border border-[#FDBA74] shadow-lg space-y-1 text-xs">
+                  <div className="text-[9px] font-black uppercase tracking-wider text-[#A49184] px-1.5 py-1 flex items-center justify-between border-b border-[#F4E2D3]">
+                    <span>Test Accounts (RBAC)</span>
+                    <span className="text-[8px] text-[#D95D0D] font-mono">1-Click</span>
+                  </div>
+                  {DEMO_PERSONAS.map((p) => {
+                    const isSelected = currentRole === p.role;
+                    return (
+                      <button
+                        key={p.role}
+                        type="button"
+                        onClick={() => handleSwitchPersona(p)}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-[#FFF2E7] text-[#D95D0D] font-extrabold border border-[#FDBA74]"
+                            : "text-[#7C6A5E] hover:bg-[#FFF5EC] hover:text-[#201815]"
+                        }`}
+                      >
+                        <div className="truncate mr-1">
+                          <div className="text-[10px] font-bold truncate">{p.name}</div>
+                          <div className="text-[9px] text-[#A49184] truncate">{p.title}</div>
+                        </div>
+                        {isSelected && <Check className="w-3 h-3 text-[#D95D0D] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <Link

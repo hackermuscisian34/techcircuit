@@ -402,15 +402,97 @@ def add_submission_comment(submission_id: str, payload: CommentCreate, current_u
 
 @router.put('/findings/{finding_id}/decision')
 @router.post('/findings/{finding_id}/decision')
-def update_finding_decision(finding_id: str, payload: FindingDecisionUpdate, current_user: User=Depends(get_current_user), db: Session=Depends(get_db)):
-    finding = db.query(Finding).join(ContentVersion, Finding.content_version_id == ContentVersion.id).join(ContentSubmission, ContentVersion.submission_id == ContentSubmission.id).filter(Finding.id == finding_id, ContentSubmission.workspace_id == current_user.workspace_id).first()
+def update_finding_decision(
+    finding_id: str,
+    payload: FindingDecisionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    finding = db.query(Finding).join(
+        ContentVersion, Finding.content_version_id == ContentVersion.id
+    ).join(
+        ContentSubmission, ContentVersion.submission_id == ContentSubmission.id
+    ).filter(
+        Finding.id == finding_id,
+        ContentSubmission.workspace_id == current_user.workspace_id
+    ).first()
+
     if not finding:
-        raise HTTPException(status_code=404, detail='Finding not found.')
-    decision_val = payload.user_decision or payload.decision or 'ACCEPTED'
+        raise HTTPException(status_code=404, detail='Finding not found in your workspace.')
+
+    decision_input = payload.user_decision or payload.decision or 'ACCEPTED'
+    decision_val = decision_input.strip().upper()
+    valid_decisions = {'ACCEPTED', 'EDITED', 'DISMISSED', 'OVERRIDDEN', 'PENDING'}
+    if decision_val not in valid_decisions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid finding decision '{decision_input}'. Allowed decisions: {', '.join(sorted(valid_decisions))}."
+        )
+
+    previous_decision = finding.user_decision or 'PENDING'
+
+    if decision_val == 'OVERRIDDEN':
+        # Separation of duties: Creators are strictly prohibited from overriding BLOCKING findings
+        if finding.severity == 'BLOCKING' and current_user.role not in ('ADMIN', 'BRAND_MANAGER', 'AUTHORISED_REVIEWER'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Creators are not permitted to override BLOCKING brand compliance findings. An Authorised Reviewer or Brand Manager must evaluate and record justified exceptions."
+            )
+
+        reason_val = (payload.override_reason or payload.note or '').strip()
+        if not reason_val or len(reason_val) < 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A detailed justification reason (minimum 5 characters) is required when overriding a brand compliance finding."
+            )
+
+        finding.user_decision = decision_val
+        db.commit()
+
+        record_audit_event(
+            db=db,
+            workspace_id=current_user.workspace_id,
+            event_type='FINDING_OVERRIDDEN',
+            actor_id=current_user.id,
+            actor_role=current_user.role,
+            details={
+                'finding_id': finding.id,
+                'rule_id': finding.rule_id,
+                'severity': finding.severity,
+                'matched_text': finding.matched_text,
+                'previous_decision': previous_decision,
+                'new_decision': decision_val,
+                'override_reason': reason_val
+            }
+        )
+        return {
+            'message': 'Finding override successfully recorded with audit justification.',
+            'finding_id': finding.id,
+            'decision': decision_val,
+            'reason': reason_val
+        }
+
     finding.user_decision = decision_val
     db.commit()
-    if decision_val == 'OVERRIDDEN':
-        reason_val = payload.override_reason or payload.note or 'Operational context justification'
-        record_audit_event(db=db, workspace_id=current_user.workspace_id, event_type='OVERRIDE_LOGGED', actor_id=current_user.id, actor_role=current_user.role, details={'finding_id': finding.id, 'rule_id': finding.rule_id, 'reason': reason_val})
-    return {'message': 'Finding decision recorded', 'finding_id': finding.id, 'decision': decision_val}
+
+    record_audit_event(
+        db=db,
+        workspace_id=current_user.workspace_id,
+        event_type='FINDING_DECISION_UPDATED',
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        details={
+            'finding_id': finding.id,
+            'rule_id': finding.rule_id,
+            'previous_decision': previous_decision,
+            'new_decision': decision_val
+        }
+    )
+
+    return {
+        'message': f'Finding decision updated to {decision_val}.',
+        'finding_id': finding.id,
+        'decision': decision_val
+    }
+
 

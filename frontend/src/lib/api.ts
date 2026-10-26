@@ -18,6 +18,33 @@ export interface User {
   full_name: string;
   role: "ADMIN" | "BRAND_MANAGER" | "CREATOR" | "AUTHORISED_REVIEWER" | "APPROVER";
   workspace_id: string;
+  is_active?: boolean;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: "ADMIN" | "BRAND_MANAGER" | "CREATOR" | "AUTHORISED_REVIEWER" | "APPROVER";
+  workspace_id: string;
+  status: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+  invited_by_user_id: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface AdminStats {
+  active_users: number;
+  total_users: number;
+  total_workspaces: number;
+  pending_invitations: number;
+  system_health: {
+    status: string;
+    database: string;
+    storage: string;
+    audit_chain: string;
+    environment: string;
+    active_llm_provider: string;
+  };
 }
 
 export interface RuleTestCase {
@@ -585,4 +612,56 @@ export const api = {
   verifyAuditChain: () => fetchAPI<AuditChainVerificationResult>("/audit/verify"),
   getReceipt: (receiptId: string) => fetchAPI<any>(`/audit/receipt/${receiptId}`),
   exportAuditLedger: () => fetchAPI<any>("/audit/export"),
+
+  // Admin & Identity Governance
+  createInvitation: (data: { email: string; role: string; workspace_id?: string; expires_in_days?: number }) =>
+    fetchAPI<{ invitation: Invitation; invite_token?: string; invite_url?: string }>("/auth/invitations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getInvitations: () => fetchAPI<Invitation[]>("/auth/invitations"),
+  acceptInvitation: (data: { token: string; full_name: string; password: string }) =>
+    fetchAPI<{
+      access_token: string;
+      token_type: string;
+      user_id: string;
+      email: string;
+      full_name: string;
+      role: "ADMIN" | "BRAND_MANAGER" | "CREATOR" | "AUTHORISED_REVIEWER" | "APPROVER";
+      workspace_id: string;
+    }>("/auth/invitations/accept", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateUserStatus: (userId: string, is_active: boolean) =>
+    fetchAPI<User>(`/auth/users/${userId}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ is_active }),
+    }),
+  updateUserRole: (userId: string, role: string) =>
+    fetchAPI<User>(`/auth/users/${userId}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+  resetUserPassword: (userId: string, new_password?: string) =>
+    fetchAPI<{ message: string; temporary_password?: string }>(`/auth/users/${userId}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ new_password }),
+    }),
+  bootstrapAdmin: (data: { email: string; password: string; full_name: string }) =>
+    fetchAPI<{
+      access_token: string;
+      token_type: string;
+      user_id: string;
+      email: string;
+      full_name: string;
+      role: string;
+      workspace_id: string;
+    }>("/auth/bootstrap-admin", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getAdminStats: () => fetchAPI<AdminStats>("/auth/admin/stats"),
+  getAssetPreviewTicket: (assetId: string) =>
+    fetchAPI<{ asset_id: string; ticket: string; expires_in_seconds: number }>(`/assets/${assetId}/preview-ticket`),
 };

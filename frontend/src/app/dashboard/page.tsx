@@ -7,8 +7,9 @@ import {
   Activity, Radio, ChevronRight, Lock, BarChart3,
   TrendingUp, Terminal, AlertTriangle, Star,
   Upload, FileText, X, Sparkles, CheckCircle2,
-  Cpu, ShieldCheck, ArrowRight
+  Cpu, ShieldCheck, ShieldAlert, CheckSquare, ArrowRight
 } from "lucide-react";
+import { isRouteAllowedForRole, UserRole, ROLE_DISPLAY_NAMES } from "@/lib/permissions";
 import { api, Rulebook, Fact, ReviewResult, AuditEvent, Finding } from "../../lib/api";
 import { BorderBeam } from "@/components/animations/BorderBeam";
 import { MagnetButton } from "@/components/animations/MagnetButton";
@@ -71,21 +72,34 @@ function MetricSummaryTile({
 }
 
 const DASHBOARD_QUICK_LINKS = [
+  { href: "/admin", icon: ShieldAlert, label: "Admin Portal", sub: "User RBAC & Telemetry", color: "#B42318" },
+  { href: "/settings", icon: Cpu, label: "Platform Settings", sub: "Compiler & AI Engine", color: "#7C6A5E" },
+  { href: "/review", icon: FileText, label: "Review Studio", sub: "Drafts & Intent Lock", color: "#FF8A3D" },
   { href: "/findings", icon: AlertTriangle, label: "Audit Findings", sub: "Diffs & Flags", color: "#D95D0D" },
+  { href: "/approvals", icon: CheckSquare, label: "Approval Queue", sub: "Sign-Off & Receipts", color: "#027A48" },
+  { href: "/rulebook", icon: BookOpen, label: "Brand Rules", sub: "Atomic Constraints", color: "#D95D0D" },
   { href: "/facts", icon: Database, label: "Fact Vault", sub: "TTL & Citations", color: "#FF8A3D" },
-  { href: "/assets", icon: Star, label: "Brand Assets", sub: "Registry", color: "#FFAE74" },
-  { href: "/insights", icon: BarChart3, label: "Analytics", sub: "Governance KPIs", color: "#027A48" },
-  { href: "/audit", icon: Fingerprint, label: "Audit Chain", sub: "HMAC Ledger", color: "#FF8A3D" },
-  { href: "/guide", icon: BookOpen, label: "Operations Handbook", sub: "Documentation", color: "#D95D0D" },
-  { href: "/settings", icon: Cpu, label: "LLM Settings", sub: "Compiler Config", color: "#7C6A5E" },
-  { href: "/login", icon: Lock, label: "Switch User", sub: "Identity Vault", color: "#A49184" },
+  { href: "/assets", icon: Star, label: "Brand Assets", sub: "Vector Registry", color: "#FFAE74" },
+  { href: "/insights", icon: BarChart3, label: "Governance Insights", sub: "Analytics & KPIs", color: "#027A48" },
+  { href: "/audit", icon: Fingerprint, label: "Audit Ledger", sub: "SHA-256 Chain", color: "#FF8A3D" },
+  { href: "/guide", icon: BookOpen, label: "User Handbook", sub: "Documentation", color: "#D95D0D" },
 ];
 
 const WORKFLOW_CARDS = [
   {
+    href: "/admin", emoji: "🛡️", title: "Platform Administration",
+    desc: "Manage user directory, provision token invitations, inspect system telemetry and verify audit chain.",
+    accent: "#B42318", border: "#FECDCA", bg: "#FEF3F2", cta: "Open Admin Portal",
+  },
+  {
     href: "/review", emoji: "⚡", title: "Review Content",
     desc: "Audit product naming, logo spacing, trademarks, and claims with 1-click automatic fixes.",
     accent: "#FF8A3D", border: "#FDBA74", bg: "#FFF2E7", cta: "Open Studio",
+  },
+  {
+    href: "/rulebook", emoji: "📖", title: "Brand Rulebook",
+    desc: "Manage compiled guidelines, atomic rule logic, and execute automated pass/fail unit regressions.",
+    accent: "#D95D0D", border: "#FDBA74", bg: "#FFF2E7", cta: "Manage Rules",
   },
   {
     href: "/assets", emoji: "🎨", title: "Brand Assets",
@@ -93,7 +107,7 @@ const WORKFLOW_CARDS = [
     accent: "#D95D0D", border: "#FDBA74", bg: "#FFF2E7", cta: "View Assets",
   },
   {
-    href: "/approvals", emoji: "✅", title: "Approvals & History",
+    href: "/approvals", emoji: "✅", title: "Approvals & Receipts",
     desc: "Review compliant drafts and issue verified approvals before public publishing.",
     accent: "#027A48", border: "#A6F4C5", bg: "#EDFDF5", cta: "View Approvals",
   },
@@ -105,6 +119,7 @@ export default function DashboardPage() {
   const [immutableEvents, setImmutableEvents] = useState<AuditEvent[]>([]);
   const [profileHandle, setProfileHandle] = useState("User");
   const [profileDesignation, setProfileDesignation] = useState("CREATOR");
+  const [currentRole, setCurrentRole] = useState<UserRole>("CREATOR");
 
   const quickDropzoneInputRef = useRef<HTMLInputElement>(null);
   const [stagedDocument, setStagedDocument] = useState<File | null>(null);
@@ -114,12 +129,22 @@ export default function DashboardPage() {
   const [appliedItemPatches, setAppliedItemPatches] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedName = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name");
-      const savedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
-      if (savedName) setProfileHandle(savedName);
-      if (savedRole) setProfileDesignation(savedRole);
-    }
+    const syncRole = () => {
+      if (typeof window !== "undefined") {
+        const savedName = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name");
+        const savedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
+        if (savedName) setProfileHandle(savedName);
+        if (savedRole && ["ADMIN", "BRAND_MANAGER", "CREATOR", "AUTHORISED_REVIEWER", "APPROVER"].includes(savedRole.toUpperCase())) {
+          setProfileDesignation(savedRole.toUpperCase());
+          setCurrentRole(savedRole.toUpperCase() as UserRole);
+        }
+      }
+    };
+    syncRole();
+    window.addEventListener("fidelis_user_changed", syncRole);
+    window.addEventListener("canon_user_changed", syncRole);
+    window.addEventListener("storage", syncRole);
+
     Promise.all([
       api.getActiveRulebook().catch(() => null),
       api.getFacts().catch(() => []),
@@ -129,6 +154,12 @@ export default function DashboardPage() {
       setRegisteredFacts(f);
       setImmutableEvents(evs);
     });
+
+    return () => {
+      window.removeEventListener("fidelis_user_changed", syncRole);
+      window.removeEventListener("canon_user_changed", syncRole);
+      window.removeEventListener("storage", syncRole);
+    };
   }, []);
 
   const dispatchFastReview = async () => {
@@ -454,7 +485,7 @@ export default function DashboardPage() {
 
           <ScrollReveal direction="up" delay={60}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {WORKFLOW_CARDS.map((card, i) => (
+              {WORKFLOW_CARDS.filter((card) => isRouteAllowedForRole(card.href, currentRole)).map((card, i) => (
                 <Link key={i} href={card.href} className="block group">
                   <GlowCard className="p-5 h-full space-y-3">
                     <div
@@ -555,10 +586,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <Link
-                href="/audit"
+                href={isRouteAllowedForRole("/audit", currentRole) ? "/audit" : "/review"}
                 className="shrink-0 flex items-center gap-1.5 text-xs font-extrabold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors"
               >
-                <span>Audit History</span>
+                <span>{isRouteAllowedForRole("/audit", currentRole) ? "Audit History" : "Open Review Studio"}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -603,7 +634,10 @@ export default function DashboardPage() {
                   const Icon = badgeCfg.icon;
                   const label = ev.details?.title || ev.details?.action || ev.event_type.replace(/_/g, " ");
                   const sub = `Actor: ${ev.actor_role || "User"}`;
-                  const time = new Date(ev.created_at || ev.timestamp || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                  const eventTime = ev.created_at || ev.timestamp;
+                  const time = eventTime
+                    ? new Date(eventTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "Just now";
 
                   return (
                     <ScrollReveal key={ev.id || i} direction="right" delay={i * 70}>
@@ -629,20 +663,30 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <Link
-              href="/audit"
-              className="mt-4 flex items-center justify-center gap-1.5 text-xs font-bold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors py-2 rounded-xl bg-[#FFF5EC] hover:bg-[#FFEAD9] border border-[#F4E2D3] hover:border-[#FDBA74]"
-            >
-              <span>Full Audit Trail</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+            {isRouteAllowedForRole("/audit", currentRole) ? (
+              <Link
+                href="/audit"
+                className="mt-4 flex items-center justify-center gap-1.5 text-xs font-bold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors py-2 rounded-xl bg-[#FFF5EC] hover:bg-[#FFEAD9] border border-[#F4E2D3] hover:border-[#FDBA74]"
+              >
+                <span>Full Audit Trail</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            ) : (
+              <Link
+                href="/review"
+                className="mt-4 flex items-center justify-center gap-1.5 text-xs font-bold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors py-2 rounded-xl bg-[#FFF5EC] hover:bg-[#FFEAD9] border border-[#F4E2D3] hover:border-[#FDBA74]"
+              >
+                <span>Launch Review Studio</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
           </GlowCard>
         </ScrollReveal>
       </div>
 
       <ScrollReveal direction="up" delay={60}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {DASHBOARD_QUICK_LINKS.map((item, i) => {
+          {DASHBOARD_QUICK_LINKS.filter((item) => isRouteAllowedForRole(item.href, currentRole)).map((item, i) => {
             const Icon = item.icon;
             return (
               <ScrollReveal key={i} direction="up" delay={i * 40}>

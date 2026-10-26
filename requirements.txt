@@ -13,4 +13,5 @@ pyjwt>=2.10.0
 cryptography>=43.0.0
 huggingface_hub>=0.24.0
 alembic>=1.14.0
+defusedxml>=0.7.1
 
