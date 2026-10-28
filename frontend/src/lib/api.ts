@@ -30,6 +30,48 @@ export interface Invitation {
   invited_by_user_id: string;
   created_at: string;
   expires_at: string;
+  is_used?: boolean;
+}
+
+export interface InvitationResponse {
+  id: string;
+  email: string;
+  role: "ADMIN" | "BRAND_MANAGER" | "CREATOR" | "AUTHORISED_REVIEWER" | "APPROVER";
+  workspace_id: string;
+  expires_at: string;
+  is_used?: boolean;
+  created_at: string;
+  invite_token?: string;
+  invite_url?: string;
+  email_dispatched?: boolean;
+  delivery_status?: string;
+  delivery_message?: string;
+  delivery_method?: "smtp" | "simulated" | "smtp_error" | string;
+  is_live?: boolean;
+  invitation?: Invitation;
+}
+
+export interface SMTPStatus {
+  configured: boolean;
+  host: string;
+  port: number;
+  user?: string | null;
+  has_password: boolean;
+  from_email: string;
+  from_name: string;
+  tls: boolean;
+  mode: "LIVE_SMTP" | "LOCAL_SIMULATED";
+}
+
+export interface SMTPConfigPayload {
+  host: string;
+  port: number;
+  user?: string;
+  password?: string;
+  from_email?: string;
+  from_name?: string;
+  tls?: boolean;
+  persist_to_env?: boolean;
 }
 
 export interface AdminStats {
@@ -614,10 +656,14 @@ export const api = {
   exportAuditLedger: () => fetchAPI<any>("/audit/export"),
 
   // Admin & Identity Governance
-  createInvitation: (data: { email: string; role: string; workspace_id?: string; expires_in_days?: number }) =>
-    fetchAPI<{ invitation: Invitation; invite_token?: string; invite_url?: string }>("/auth/invitations", {
+  createInvitation: (data: { email: string; role: string; workspace_id?: string; expires_in_days?: number; expires_in_hours?: number; invite_base_url?: string }) =>
+    fetchAPI<InvitationResponse>("/auth/invitations", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  resendInvitationEmail: (invitationId: string) =>
+    fetchAPI<{ message: string; email_dispatched: boolean; recipient: string; invite_token?: string; invite_url?: string }>(`/auth/invitations/${invitationId}/resend-email`, {
+      method: "POST",
     }),
   getInvitations: () => fetchAPI<Invitation[]>("/auth/invitations"),
   acceptInvitation: (data: { token: string; full_name: string; password: string }) =>
@@ -664,4 +710,18 @@ export const api = {
   getAdminStats: () => fetchAPI<AdminStats>("/auth/admin/stats"),
   getAssetPreviewTicket: (assetId: string) =>
     fetchAPI<{ asset_id: string; ticket: string; expires_in_seconds: number }>(`/assets/${assetId}/preview-ticket`),
+  getSmtpStatus: () => fetchAPI<SMTPStatus>("/auth/email/smtp-status"),
+  testSmtpConnection: (recipient_email: string) =>
+    fetchAPI<{ success: boolean; message: string; delivery_status?: string; error_details?: string }>(
+      "/auth/email/test",
+      {
+        method: "POST",
+        body: JSON.stringify({ recipient_email }),
+      }
+    ),
+  configureSmtp: (data: SMTPConfigPayload) =>
+    fetchAPI<SMTPStatus>("/auth/email/configure-smtp", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

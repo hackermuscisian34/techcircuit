@@ -105,6 +105,9 @@ def test_invitation_lifecycle_create_and_accept(client, db_session):
     invite_data = invite_resp.json()
     token = invite_data["invite_token"]
     assert token is not None
+    assert invite_data["email_dispatched"] is True
+    assert invite_data["delivery_status"].lower() in ("sent", "simulated")
+    assert "/login?invite=" in invite_data["invite_url"]
 
     # Verify only digest is stored in DB
     inv_rec = db_session.query(Invitation).filter(Invitation.email == "newapprover@example.com").first()
@@ -134,6 +137,32 @@ def test_invitation_lifecycle_create_and_accept(client, db_session):
     )
     assert replay_resp.status_code == 400
     assert "already" in replay_resp.json()["detail"].lower()
+
+
+def test_invitation_resend_email(client, db_session):
+    """Admin can resend the invitation email to a pending invitee."""
+    admin = db_session.query(User).filter(User.role == "ADMIN").first()
+    headers = get_auth_headers(admin)
+
+    # 1. Create invitation
+    invite_resp = client.post(
+        "/api/v1/auth/invitations",
+        json={"email": "resend_test@example.com", "role": "AUTHORISED_REVIEWER", "expires_in_days": 5},
+        headers=headers,
+    )
+    assert invite_resp.status_code == 200
+    inv_id = invite_resp.json()["id"]
+
+    # 2. Resend email
+    resend_resp = client.post(
+        f"/api/v1/auth/invitations/{inv_id}/resend-email",
+        headers=headers,
+    )
+    assert resend_resp.status_code == 200
+    resend_data = resend_resp.json()
+    assert resend_data["success"] is True
+    assert resend_data["delivery_status"].lower() in ("sent", "simulated")
+    assert resend_data["recipient"] == "resend_test@example.com"
 
 
 def test_invitation_expired_token(client, db_session):

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Database, FileCheck2,
   AlertCircle, CheckSquare, Palette, BarChart3,
   ShieldCheck, ShieldAlert, Cpu, HelpCircle, LogOut, Menu, X,
-  Sparkles, Zap, ChevronRight, Terminal, Lock, Users, Check
+  Sparkles, Zap, ChevronRight, Terminal, Lock
 } from "lucide-react";
 import {
   UserRole,
@@ -60,19 +60,28 @@ const GROUP_TITLES: Record<string, string> = {
   support: "Platform Handbook",
 };
 
-const DEMO_PERSONAS = [
-  { role: "ADMIN", name: "Alfred Biju", email: "alfred@apexdynamics.example", title: "System Administrator" },
-  { role: "BRAND_MANAGER", name: "Sebin Sabu", email: "sebin@apexdynamics.example", title: "Brand Manager" },
-  { role: "AUTHORISED_REVIEWER", name: "Albert Biju", email: "albert@apexdynamics.example", title: "Compliance Reviewer" },
-  { role: "CREATOR", name: "Adhithya Biju", email: "adhithya@apexdynamics.example", title: "Content Creator" },
-  { role: "APPROVER", name: "Biju", email: "biju@apexdynamics.example", title: "Executive Approver" },
-];
-
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [, setMounted] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(() => {
+    if (typeof window !== "undefined") {
+      const savedId = localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id");
+      const savedName = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name");
+      const savedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
+      const savedEmail = localStorage.getItem("fidelis_user_email") || localStorage.getItem("canon_user_email");
+      if (savedName && savedRole) {
+        return {
+          id: savedId || "usr-current",
+          email: savedEmail || "",
+          full_name: savedName,
+          role: savedRole as any,
+          workspace_id: "ws-apexdynamics-001",
+        };
+      }
+    }
+    return null;
+  });
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     if (typeof window !== "undefined") {
       const savedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
@@ -82,73 +91,78 @@ export function Sidebar() {
     }
     return "CREATOR";
   });
-  const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
-  const handleSwitchPersona = (persona: typeof DEMO_PERSONAS[0]) => {
-    localStorage.setItem("fidelis_user_role", persona.role);
-    localStorage.setItem("fidelis_user_name", persona.name);
-    localStorage.setItem("fidelis_user_email", persona.email);
-    localStorage.setItem("canon_user_role", persona.role);
-    localStorage.setItem("canon_user_name", persona.name);
-    localStorage.setItem("canon_user_email", persona.email);
-
-    setCurrentRole(persona.role as UserRole);
-    setCurrentUser({
-      id: `usr-${persona.role.toLowerCase()}-01`,
-      email: persona.email,
-      full_name: persona.name,
-      role: persona.role as any,
-      workspace_id: "ws-primary-001",
-    });
-
-    setShowRoleSelector(false);
-    window.dispatchEvent(new Event("fidelis_user_changed"));
-    window.dispatchEvent(new Event("canon_user_changed"));
-    window.dispatchEvent(new Event("storage"));
-
-    const allowed = getAllowedRoutesForRole(persona.role as UserRole);
-    const isCurrentAllowed = allowed.some((r) => pathname === r || (r !== "/" && pathname.startsWith(`${r}/`)));
-    if (!isCurrentAllowed) {
-      router.push(persona.role === "ADMIN" ? "/admin" : "/dashboard");
-    }
-  };
-
-  const syncActiveUser = () => {
+  const syncActiveUser = async () => {
     const savedId = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id")) : null;
     const savedName = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name")) : null;
     const savedRole = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role")) : null;
     const savedEmail = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_email") || localStorage.getItem("canon_user_email")) : null;
+    const token = typeof window !== "undefined" ? (localStorage.getItem("fidelis_token") || localStorage.getItem("canon_token")) : null;
 
     if (savedRole && ["ADMIN", "BRAND_MANAGER", "CREATOR", "AUTHORISED_REVIEWER", "APPROVER"].includes(savedRole.toUpperCase())) {
       setCurrentRole(savedRole.toUpperCase() as UserRole);
     }
+    if (savedName && savedRole) {
+      setCurrentUser((prev) => prev ?? {
+        id: savedId || "usr-current",
+        email: savedEmail || "",
+        full_name: savedName,
+        role: savedRole as any,
+        workspace_id: "ws-apexdynamics-001",
+      });
+    }
 
-    api.getUsers()
-      .then((records) => {
+    if (!token) return;
+
+    try {
+      // Fetch authenticated profile directly from /auth/me
+      const profile = await api.getProfile();
+      if (profile && profile.id) {
+        setCurrentUser(profile);
+        const liveRole = profile.role.toUpperCase() as UserRole;
+        setCurrentRole(liveRole);
+
+        if (liveRole !== savedRole || profile.full_name !== savedName) {
+          localStorage.setItem("fidelis_user_role", profile.role);
+          localStorage.setItem("canon_user_role", profile.role);
+          localStorage.setItem("fidelis_user_name", profile.full_name);
+          localStorage.setItem("canon_user_name", profile.full_name);
+          localStorage.setItem("fidelis_user_email", profile.email);
+          localStorage.setItem("canon_user_email", profile.email);
+          localStorage.setItem("fidelis_user_id", profile.id);
+          localStorage.setItem("canon_user_id", profile.id);
+
+          window.dispatchEvent(new Event("fidelis_user_changed"));
+          window.dispatchEvent(new Event("canon_user_changed"));
+          window.dispatchEvent(new Event("storage"));
+        }
+        return;
+      }
+    } catch {
+      // Fallback to getUsers if /auth/me encounters any issue
+      try {
+        const records = await api.getUsers();
         if (savedId) {
           const matched = records.find((u) => u.id === savedId);
           if (matched) {
             setCurrentUser(matched);
-            setCurrentRole(matched.role as UserRole);
-          } else if (savedName && savedRole) {
-            setCurrentUser({
-              id: savedId,
-              email: savedEmail ?? "",
-              full_name: savedName,
-              role: savedRole as any,
-              workspace_id: "ws-primary-001",
-            });
-            setCurrentRole(savedRole.toUpperCase() as UserRole);
+            const liveRole = matched.role.toUpperCase() as UserRole;
+            setCurrentRole(liveRole);
+            if (liveRole !== savedRole) {
+              localStorage.setItem("fidelis_user_role", matched.role);
+              localStorage.setItem("canon_user_role", matched.role);
+              window.dispatchEvent(new Event("fidelis_user_changed"));
+              window.dispatchEvent(new Event("canon_user_changed"));
+              window.dispatchEvent(new Event("storage"));
+            }
           }
-        } else if (records.length > 0) {
-          const fallback = records.find((u) => u.role === "CREATOR") ?? records[0];
-          setCurrentUser(fallback);
-          setCurrentRole(fallback.role as UserRole);
         }
-      })
-      .catch(() => {});
+      } catch {
+        // Keep existing cached state
+      }
+    }
   };
 
   useEffect(() => {
@@ -337,46 +351,10 @@ export function Sidebar() {
                 >
                   {currentRole}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setShowRoleSelector(!showRoleSelector)}
-                  className="font-bold text-[#D95D0D] hover:text-[#FF8A3D] transition-colors flex items-center gap-1 cursor-pointer"
-                  title="Switch active role to test RBAC and role-specific routes"
-                >
-                  <Users className="w-3 h-3" />
-                  <span>{showRoleSelector ? "Close" : "Switch Role"}</span>
-                </button>
+                <span className="text-[10px] text-[#A49184] font-medium truncate max-w-[110px]" suppressHydrationWarning>
+                  {currentUser.workspace_id || "Active Session"}
+                </span>
               </div>
-
-              {showRoleSelector && (
-                <div className="mt-2.5 p-2 rounded-xl bg-white border border-[#FDBA74] shadow-lg space-y-1 text-xs">
-                  <div className="text-[9px] font-black uppercase tracking-wider text-[#A49184] px-1.5 py-1 flex items-center justify-between border-b border-[#F4E2D3]">
-                    <span>Test Accounts (RBAC)</span>
-                    <span className="text-[8px] text-[#D95D0D] font-mono">1-Click</span>
-                  </div>
-                  {DEMO_PERSONAS.map((p) => {
-                    const isSelected = currentRole === p.role;
-                    return (
-                      <button
-                        key={p.role}
-                        type="button"
-                        onClick={() => handleSwitchPersona(p)}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected
-                            ? "bg-[#FFF2E7] text-[#D95D0D] font-extrabold border border-[#FDBA74]"
-                            : "text-[#7C6A5E] hover:bg-[#FFF5EC] hover:text-[#201815]"
-                        }`}
-                      >
-                        <div className="truncate mr-1">
-                          <div className="text-[10px] font-bold truncate">{p.name}</div>
-                          <div className="text-[9px] text-[#A49184] truncate">{p.title}</div>
-                        </div>
-                        {isSelected && <Check className="w-3 h-3 text-[#D95D0D] shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           ) : (
             <Link

@@ -51,9 +51,10 @@ Privileged roles (`ADMIN`, `BRAND_MANAGER`, `AUTHORISED_REVIEWER`, `APPROVER`) m
      "expires_in_days": 7
    }
    ```
-2. The system generates a cryptographically secure, single-use token (`secrets.token_urlsafe(32)`), stores only its SHA-256 digest in the database, and returns an invitation acceptance link.
-3. The invitee visits the link or uses the "Accept Invite" tab on `/login` to set their password and activate their assigned role.
-4. Tokens expire automatically after the configured duration and cannot be reused once accepted.
+2. The system generates a cryptographically secure, single-use token (`secrets.token_urlsafe(32)`), stores only its SHA-256 digest in the database, and **automatically dispatches an email to the recipient's inbox** containing the invitation token, direct activation link (`/login?invite=<token>`), and expiration details.
+3. If an SMTP server is configured via `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`), emails are delivered directly via standard TLS/STARTTLS. In development mode without an external SMTP server, FIDELIS runs simulated delivery with full console logging and audit ledger recording.
+4. The invitee opens the email link (or pastes the token in the "Accept Invitation" tab on `/login`), sets their password and name, and their privileged account is instantly activated.
+5. Administrators can also click "Resend Email" at any time from the Role Invitations tab in `/admin` to send a fresh token if an invitation has lapsed or been misplaced.
 
 ---
 
@@ -295,7 +296,7 @@ To test each persona and verify role-based routes and sidebar filtering in your 
    - The status pill displays: `Content Creator · ACTIVE · 3 of 11 modules`.
    - In the browser address bar, try navigating directly to `http://localhost:3000/settings` or `http://localhost:3000/approvals`.
    - Observe the **403 · Access Restricted** card with role diagnostics and a button to return to the Dashboard.
-4. Click **Switch Role** in the sidebar footer and sign in as **Biju** (`biju@apexdynamics.example` / `Password123!`).
+4. Click **Sign out** in the sidebar footer and sign in as **Biju** (`biju@apexdynamics.example` / `Password123!`) (or update user roles via the Admin Portal).
    - Notice the sidebar now displays **6 modules**: *Dashboard*, *Review Content*, *Approvals*, *Brand Assets*, *Audit History*, and *User Guide*.
    - Navigate to `/approvals` and sign off on pending submissions, issuing an HMAC receipt.
    - If you try navigating to `/rulebook` or `/settings`, access is restricted.

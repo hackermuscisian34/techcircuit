@@ -15,13 +15,17 @@ from app.schemas.domain import (
     Token, LoginRequest, UserResponse, UserCreate,
     InvitationCreate, InvitationResponse, InvitationAccept,
     UserStatusUpdate, RoleUpdateRequest, PasswordResetRequest,
-    BootstrapAdminRequest, AdminStatsResponse
+    BootstrapAdminRequest, AdminStatsResponse,
+    SMTPStatusResponse, SMTPTestRequest, SMTPConfigRequest
 )
 from app.core.security import (
     verify_password, create_access_token, hash_password,
     get_current_user, require_roles
 )
 from app.core.audit_chain import record_audit_event, verify_audit_chain
+from app.core.email_service import (
+    send_invitation_email, get_smtp_status, send_test_email, update_smtp_settings
+)
 from app.config import settings
 
 router = APIRouter(prefix='/auth', tags=['Authentication & RBAC'])
@@ -320,7 +324,8 @@ def create_invitation(
     raw_token = secrets.token_urlsafe(32)
     token_digest = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
 
-    expiry_hours = payload.expires_in_hours or 72
+    # Calculate expiry
+    expiry_hours = payload.expires_in_hours or (payload.expires_in_days * 24 if payload.expires_in_days else 72)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
 
     invitation = Invitation(
@@ -336,6 +341,19 @@ def create_invitation(
     db.commit()
     db.refresh(invitation)
 
+    base_url = (payload.invite_base_url or "http://localhost:3000").rstrip("/")
+    invite_url = f"{base_url}/login?invite={raw_token}"
+
+    # Automatically send the token and invitation link to the recipient's email
+    email_result = send_invitation_email(
+        recipient_email=clean_email,
+        role=target_role,
+        raw_token=raw_token,
+        expires_at=expires_at,
+        invited_by_name=current_user.full_name or "System Administrator",
+        invite_url=invite_url
+    )
+
     record_audit_event(
         db=db,
         workspace_id=current_user.workspace_id,
@@ -346,13 +364,112 @@ def create_invitation(
             'invitation_id': invitation.id,
             'email': clean_email,
             'role': target_role,
-            'expires_at': expires_at.isoformat()
+            'expires_at': expires_at.isoformat(),
+            'email_dispatched': email_result.get("success", False),
+            'delivery_status': email_result.get("delivery_status", "SENT"),
         }
     )
 
     resp = InvitationResponse.model_validate(invitation)
     resp.invite_token = raw_token
+    resp.invite_url = invite_url
+    resp.email_dispatched = email_result.get("success", False)
+    resp.delivery_status = email_result.get("delivery_status", "SENT")
+    resp.delivery_message = email_result.get("message", f"Invitation generated for {clean_email}")
+    resp.delivery_method = email_result.get("method", "simulated")
+    resp.is_live = email_result.get("is_live", False)
     return resp
+
+@router.post('/invitations/{invitation_id}/resend-email')
+def resend_invitation_email(
+    invitation_id: str,
+    current_user: User = Depends(require_roles('ADMIN', 'BRAND_MANAGER')),
+    db: Session = Depends(get_db)
+):
+    invitation = db.query(Invitation).filter(
+        Invitation.id == invitation_id,
+        Invitation.workspace_id == current_user.workspace_id
+    ).first()
+    if not invitation:
+        raise HTTPException(status_code=404, detail='Invitation not found.')
+    if invitation.is_used:
+        raise HTTPException(status_code=400, detail='This invitation has already been accepted and activated.')
+
+    # Issue a fresh raw token for security
+    raw_token = secrets.token_urlsafe(32)
+    invitation.token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+    invitation.expires_at = datetime.now(timezone.utc) + timedelta(hours=72)
+    db.commit()
+    db.refresh(invitation)
+
+    invite_url = f"http://localhost:3000/login?invite={raw_token}"
+    email_result = send_invitation_email(
+        recipient_email=invitation.email,
+        role=invitation.role,
+        raw_token=raw_token,
+        expires_at=invitation.expires_at,
+        invited_by_name=current_user.full_name or "System Administrator",
+        invite_url=invite_url
+    )
+
+    record_audit_event(
+        db=db,
+        workspace_id=current_user.workspace_id,
+        event_type='INVITATION_RESENT',
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        details={
+            'invitation_id': invitation.id,
+            'email': invitation.email,
+            'role': invitation.role,
+            'email_dispatched': email_result.get("success", False),
+            'delivery_status': email_result.get("delivery_status", "SENT"),
+        }
+    )
+
+    return {
+        "success": email_result.get("success", True),
+        "message": email_result.get("message", f"Invitation email processed for {invitation.email}."),
+        "email_dispatched": email_result.get("success", False),
+        "delivery_status": email_result.get("delivery_status", "SENT"),
+        "delivery_method": email_result.get("method", "simulated"),
+        "is_live": email_result.get("is_live", False),
+        "recipient": invitation.email,
+        "invite_token": raw_token,
+        "invite_url": invite_url
+    }
+
+@router.get('/email/smtp-status', response_model=SMTPStatusResponse)
+def get_email_smtp_status(
+    current_user: User = Depends(require_roles('ADMIN', 'BRAND_MANAGER'))
+):
+    """Returns the current SMTP configuration status and whether live emails can be sent."""
+    return get_smtp_status()
+
+@router.post('/email/test')
+def test_email_smtp(
+    payload: SMTPTestRequest,
+    current_user: User = Depends(require_roles('ADMIN'))
+):
+    """Sends a live test diagnostic email to verify that outgoing SMTP works."""
+    return send_test_email(payload.recipient_email)
+
+@router.post('/email/configure-smtp')
+def configure_email_smtp(
+    payload: SMTPConfigRequest,
+    current_user: User = Depends(require_roles('ADMIN'))
+):
+    """Updates runtime SMTP settings and persists them into backend/.env."""
+    return update_smtp_settings(
+        host=payload.host,
+        port=payload.port,
+        user=payload.user,
+        password=payload.password,
+        from_email=payload.from_email,
+        from_name=payload.from_name,
+        tls=payload.tls,
+        persist_to_env=payload.persist_to_env
+    )
 
 @router.get('/invitations', response_model=List[InvitationResponse])
 def list_invitations(

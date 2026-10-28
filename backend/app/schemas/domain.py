@@ -35,6 +35,8 @@ class InvitationCreate(BaseModel):
     email: str
     role: str
     expires_in_hours: Optional[int] = 72
+    expires_in_days: Optional[int] = None
+    invite_base_url: Optional[str] = None
 
 class InvitationResponse(BaseModel):
     id: str
@@ -45,7 +47,37 @@ class InvitationResponse(BaseModel):
     is_used: bool
     created_at: datetime
     invite_token: Optional[str] = None
+    invite_url: Optional[str] = None
+    email_dispatched: Optional[bool] = True
+    delivery_status: Optional[str] = "SENT"
+    delivery_message: Optional[str] = None
+    delivery_method: Optional[str] = "simulated"
+    is_live: Optional[bool] = False
     model_config = ConfigDict(from_attributes=True)
+
+class SMTPStatusResponse(BaseModel):
+    configured: bool
+    host: str
+    port: int
+    user: Optional[str] = None
+    has_password: bool
+    from_email: str
+    from_name: str
+    tls: bool
+    mode: str
+
+class SMTPTestRequest(BaseModel):
+    recipient_email: str
+
+class SMTPConfigRequest(BaseModel):
+    host: str
+    port: int = 587
+    user: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    tls: bool = True
+    persist_to_env: bool = True
 
 class InvitationAccept(BaseModel):
     token: str

@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     RATE_LIMIT_UPLOADS_PER_MINUTE: int = 30
     RATE_LIMIT_DEFAULT_PER_MINUTE: int = 150
 
+    # SMTP / Automated Email Dispatch Settings
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: str = 'noreply@fidelis-governance.io'
+    SMTP_FROM_NAME: str = 'FIDELIS Platform Security'
+    SMTP_TLS: bool = True
+    SMTP_TIMEOUT_SECONDS: float = 10.0
+
     SECRET_KEY: str = 'canon-hackathon-super-secret-key-change-in-production'
     ALGORITHM: str = 'HS256'
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24

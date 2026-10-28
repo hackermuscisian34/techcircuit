@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   UserCheck,
 } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface AccessRestrictionProps {
   currentRole: UserRole;
@@ -182,9 +183,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    const syncSession = () => {
-      const storedRole = localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role");
-      const storedName = localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name");
+    const syncSession = async () => {
+      const token = typeof window !== "undefined" ? (localStorage.getItem("fidelis_token") || localStorage.getItem("canon_token")) : null;
+      const storedRole = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role")) : null;
+      const storedName = typeof window !== "undefined" ? (localStorage.getItem("fidelis_user_name") || localStorage.getItem("canon_user_name")) : null;
 
       if (
         storedRole &&
@@ -201,6 +203,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setCurrentRole("CREATOR");
       }
       setUserName(storedName);
+
+      if (token) {
+        try {
+          const profile = await api.getProfile();
+          if (profile && profile.role) {
+            const liveRole = profile.role.toUpperCase() as UserRole;
+            setCurrentRole(liveRole);
+            setUserName(profile.full_name);
+            if (liveRole !== storedRole || profile.full_name !== storedName) {
+              localStorage.setItem("fidelis_user_role", profile.role);
+              localStorage.setItem("canon_user_role", profile.role);
+              localStorage.setItem("fidelis_user_name", profile.full_name);
+              localStorage.setItem("canon_user_name", profile.full_name);
+              localStorage.setItem("fidelis_user_email", profile.email);
+              localStorage.setItem("canon_user_email", profile.email);
+              localStorage.setItem("fidelis_user_id", profile.id);
+              localStorage.setItem("canon_user_id", profile.id);
+              window.dispatchEvent(new Event("fidelis_user_changed"));
+              window.dispatchEvent(new Event("canon_user_changed"));
+            }
+          }
+        } catch {
+          // Token invalid or unauthenticated
+        }
+      }
     };
 
     syncSession();

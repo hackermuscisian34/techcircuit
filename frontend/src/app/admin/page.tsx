@@ -22,14 +22,35 @@ import {
   UserX,
   UserCheck as UserCheckIcon,
   HardDrive,
-  DownloadCloud
+  DownloadCloud,
+  Mail,
+  Send,
+  Settings,
+  Info,
+  ExternalLink,
+  X
 } from "lucide-react";
-import { api, User as UserType, Invitation, AdminStats } from "@/lib/api";
+import { api, User as UserType, Invitation, AdminStats, SMTPStatus, SMTPConfigPayload } from "@/lib/api";
 import { UserRole } from "@/lib/permissions";
 
 export default function AdminPortalPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "invitations" | "security">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "invitations" | "security">(() => {
+    if (typeof window !== "undefined") {
+      const savedTab = localStorage.getItem("fidelis_admin_active_tab");
+      if (savedTab === "overview" || savedTab === "users" || savedTab === "invitations" || savedTab === "security") {
+        return savedTab;
+      }
+    }
+    return "overview";
+  });
+
+  const handleTabChange = (tab: "overview" | "users" | "invitations" | "security") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fidelis_admin_active_tab", tab);
+    }
+  };
 
   // Authentication & Access Check
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
@@ -52,7 +73,33 @@ export default function AdminPortalPage() {
   const [inviteRole, setInviteRole] = useState<"BRAND_MANAGER" | "AUTHORISED_REVIEWER" | "APPROVER" | "ADMIN" | "CREATOR">("AUTHORISED_REVIEWER");
   const [inviteDays, setInviteDays] = useState(7);
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
-  const [newlyCreatedInvite, setNewlyCreatedInvite] = useState<{ token: string; url: string; email: string; role: string } | null>(null);
+  const [isResendingInvite, setIsResendingInvite] = useState<string | null>(null);
+  const [newlyCreatedInvite, setNewlyCreatedInvite] = useState<{
+    token: string;
+    url: string;
+    email: string;
+    role: string;
+    email_dispatched?: boolean;
+    delivery_status?: string;
+    delivery_method?: string;
+    is_live?: boolean;
+    delivery_message?: string;
+  } | null>(null);
+
+  // SMTP Configuration State
+  const [smtpStatus, setSmtpStatus] = useState<SMTPStatus | null>(null);
+  const [isSmtpModalOpen, setIsSmtpModalOpen] = useState(false);
+  const [smtpHostInput, setSmtpHostInput] = useState("smtp.gmail.com");
+  const [smtpPortInput, setSmtpPortInput] = useState(587);
+  const [smtpUserInput, setSmtpUserInput] = useState("");
+  const [smtpPassInput, setSmtpPassInput] = useState("");
+  const [smtpFromEmailInput, setSmtpFromEmailInput] = useState("noreply@fidelis-governance.io");
+  const [smtpFromNameInput, setSmtpFromNameInput] = useState("FIDELIS Platform Security");
+  const [smtpTlsInput, setSmtpTlsInput] = useState(true);
+  const [isSavingSmtp, setIsSavingSmtp] = useState(false);
+  const [isTestingSmtp, setIsTestingSmtp] = useState(false);
+  const [smtpTestEmail, setSmtpTestEmail] = useState("alfredbiju34@gmail.com");
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Role Edit & Password Reset State
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -61,14 +108,25 @@ export default function AdminPortalPage() {
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [statsData, usersData, invitesData] = await Promise.all([
+      const [statsData, usersData, invitesData, smtpData] = await Promise.all([
         api.getAdminStats().catch(() => null),
         api.getUsers().catch(() => []),
         api.getInvitations().catch(() => []),
+        api.getSmtpStatus().catch(() => null),
       ]);
       if (statsData) setStats(statsData);
       setUsers(usersData);
       setInvitations(invitesData);
+      if (smtpData) {
+        setSmtpStatus(smtpData);
+        if (smtpData.configured && smtpData.host) {
+          setSmtpHostInput(smtpData.host);
+          setSmtpPortInput(smtpData.port);
+          if (smtpData.from_email) setSmtpFromEmailInput(smtpData.from_email);
+          if (smtpData.from_name) setSmtpFromNameInput(smtpData.from_name);
+          setSmtpTlsInput(smtpData.tls);
+        }
+      }
     } catch (err: any) {
       setActionMessage({ text: err.message || "Could not load administrative telemetry.", type: "error" });
     } finally {
@@ -77,17 +135,39 @@ export default function AdminPortalPage() {
   }, []);
 
   useEffect(() => {
-    const role = (localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role")) as UserRole | null;
-    const uid = localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id");
-    setCurrentUserRole(role);
-    setCurrentUserId(uid);
+    const checkRoleAndLoad = async () => {
+      let role = (localStorage.getItem("fidelis_user_role") || localStorage.getItem("canon_user_role")) as UserRole | null;
+      let uid = localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id");
+      setCurrentUserRole(role);
+      setCurrentUserId(uid);
 
-    if (role && role !== "ADMIN") {
-      // Non-admins are prevented by RBAC
-      return;
-    }
+      try {
+        const profile = await api.getProfile();
+        if (profile && profile.role) {
+          role = profile.role as UserRole;
+          uid = profile.id;
+          setCurrentUserRole(role);
+          setCurrentUserId(uid);
+          localStorage.setItem("fidelis_user_role", profile.role);
+          localStorage.setItem("canon_user_role", profile.role);
+          localStorage.setItem("fidelis_user_id", profile.id);
+          localStorage.setItem("canon_user_id", profile.id);
+          window.dispatchEvent(new Event("fidelis_user_changed"));
+          window.dispatchEvent(new Event("canon_user_changed"));
+        }
+      } catch {
+        // Fallback to local session
+      }
 
-    loadAllData();
+      if (role && role !== "ADMIN") {
+        // Non-admins are prevented by RBAC
+        return;
+      }
+
+      loadAllData();
+    };
+
+    checkRoleAndLoad();
   }, [loadAllData]);
 
   const handleVerifyAuditChain = async () => {
@@ -117,22 +197,156 @@ export default function AdminPortalPage() {
         email: inviteEmail.trim(),
         role: inviteRole,
         expires_in_days: inviteDays,
+        expires_in_hours: inviteDays * 24,
+        invite_base_url: typeof window !== "undefined" ? window.location.origin : undefined,
       });
 
+      // Defensively parse invitation data whether returned flat or nested
+      const inviteObj = (res as any).invitation || res;
+      const recipientEmail = inviteObj.email || inviteEmail.trim();
+      const recipientRole = inviteObj.role || inviteRole;
+      const inviteToken = (res as any).invite_token || inviteObj.invite_token || inviteObj.id;
+      const inviteUrl = (res as any).invite_url || `${window.location.origin}/login?invite=${inviteToken}`;
+      const emailDispatched = (res as any).email_dispatched ?? true;
+      const isLive = (res as any).is_live ?? false;
+      const deliveryMethod = (res as any).delivery_method ?? "simulated";
+      const deliveryStatus = (res as any).delivery_status ?? "SIMULATED";
+      const deliveryMessage = (res as any).delivery_message ?? "";
+
       setNewlyCreatedInvite({
-        token: res.invite_token || res.invitation.id,
-        url: res.invite_url || `${window.location.origin}/login?invite=${res.invite_token}`,
-        email: res.invitation.email,
-        role: res.invitation.role,
+        token: inviteToken,
+        url: inviteUrl,
+        email: recipientEmail,
+        role: recipientRole,
+        email_dispatched: emailDispatched,
+        delivery_status: deliveryStatus,
+        delivery_method: deliveryMethod,
+        is_live: isLive,
+        delivery_message: deliveryMessage,
       });
 
       setInviteEmail("");
-      setActionMessage({ text: `Invitation generated successfully for ${res.invitation.email} (${res.invitation.role})`, type: "success" });
+      if (isLive) {
+        setActionMessage({
+          text: `Invitation generated! Live email delivered to ${recipientEmail} (${recipientRole}) via SMTP.`,
+          type: "success",
+        });
+      } else if (deliveryMethod === "smtp_error") {
+        setActionMessage({
+          text: `Invitation created, but live SMTP delivery failed: ${deliveryMessage}. Token and link are ready below.`,
+          type: "error",
+        });
+      } else {
+        setActionMessage({
+          text: `Invitation generated! Real SMTP is not configured in backend/.env (token logged to console). Use 'Open in Email App' or copy the link below to send to ${recipientEmail}.`,
+          type: "success",
+        });
+      }
       loadAllData();
     } catch (err: any) {
       setActionMessage({ text: err.message || "Could not generate invitation.", type: "error" });
     } finally {
       setIsSubmittingInvite(false);
+    }
+  };
+
+  const handleResendInvitation = async (invitationId: string, email: string) => {
+    setIsResendingInvite(invitationId);
+    try {
+      const res = await api.resendInvitationEmail(invitationId);
+      const isLive = (res as any).is_live ?? false;
+      const deliveryMethod = (res as any).delivery_method ?? "simulated";
+      const deliveryMessage = (res as any).delivery_message ?? res.message;
+
+      if (isLive) {
+        setActionMessage({
+          text: `Invitation token successfully resent to ${email} via SMTP!`,
+          type: "success",
+        });
+      } else if (deliveryMethod === "smtp_error") {
+        setActionMessage({
+          text: `Resend failed via SMTP: ${deliveryMessage}. Token is updated and available below.`,
+          type: "error",
+        });
+      } else {
+        setActionMessage({
+          text: `Fresh token generated for ${email}! Real SMTP is not configured — token logged to console. Click 'Open in Email App' or copy below.`,
+          type: "success",
+        });
+      }
+
+      if (res.invite_token) {
+        setNewlyCreatedInvite({
+          token: res.invite_token,
+          url: res.invite_url || `${window.location.origin}/login?invite=${res.invite_token}`,
+          email: res.recipient || email,
+          role: inviteRole,
+          email_dispatched: res.email_dispatched,
+          delivery_status: (res as any).delivery_status ?? "SENT",
+          delivery_method: deliveryMethod,
+          is_live: isLive,
+          delivery_message: deliveryMessage,
+        });
+      }
+      loadAllData();
+    } catch (err: any) {
+      setActionMessage({ text: err.message || "Failed to resend invitation email.", type: "error" });
+    } finally {
+      setIsResendingInvite(null);
+    }
+  };
+
+  const handleSaveSmtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSmtp(true);
+    setSmtpTestResult(null);
+    try {
+      const res = await api.configureSmtp({
+        host: smtpHostInput.trim(),
+        port: Number(smtpPortInput),
+        user: smtpUserInput.trim() || undefined,
+        password: smtpPassInput.trim() || undefined,
+        from_email: smtpFromEmailInput.trim() || undefined,
+        from_name: smtpFromNameInput.trim() || undefined,
+        tls: smtpTlsInput,
+        persist_to_env: true,
+      });
+      setSmtpStatus(res);
+      setActionMessage({
+        text: `SMTP Configuration successfully updated and saved to backend/.env! Mode: ${res.mode}`,
+        type: "success",
+      });
+      setIsSmtpModalOpen(false);
+    } catch (err: any) {
+      setActionMessage({
+        text: err.message || "Failed to save SMTP configuration.",
+        type: "error",
+      });
+    } finally {
+      setIsSavingSmtp(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    if (!smtpTestEmail.trim()) {
+      setSmtpTestResult({ success: false, message: "Please enter a test recipient email." });
+      return;
+    }
+    setIsTestingSmtp(true);
+    setSmtpTestResult(null);
+    try {
+      const res = await api.testSmtpConnection(smtpTestEmail.trim());
+      setSmtpTestResult({
+        success: res.success,
+        message: res.message || (res.success ? "Test email sent successfully!" : "Failed to send test email."),
+      });
+    } catch (err: any) {
+      setSmtpTestResult({
+        success: false,
+        message: err.message || "Failed to reach SMTP server.",
+      });
+    } finally {
+      setIsTestingSmtp(false);
     }
   };
 
@@ -159,8 +373,26 @@ export default function AdminPortalPage() {
     try {
       await api.updateUserRole(userId, newRole);
       setEditingUserId(null);
+
+      // Immediately reflect the updated role in local state
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, role: newRole as UserType["role"] } : u))
+      );
+
       setActionMessage({ text: `User role successfully updated to ${newRole}.`, type: "success" });
-      loadAllData();
+
+      // If the admin modified their own role, update active session and notify app
+      const uid = localStorage.getItem("fidelis_user_id") || localStorage.getItem("canon_user_id");
+      if (userId === uid) {
+        localStorage.setItem("fidelis_user_role", newRole);
+        localStorage.setItem("canon_user_role", newRole);
+        setCurrentUserRole(newRole as UserRole);
+        window.dispatchEvent(new Event("fidelis_user_changed"));
+        window.dispatchEvent(new Event("canon_user_changed"));
+        window.dispatchEvent(new Event("storage"));
+      }
+
+      await loadAllData();
     } catch (err: any) {
       setActionMessage({ text: err.message || "Failed to update role.", type: "error" });
     }
@@ -295,7 +527,7 @@ export default function AdminPortalPage() {
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-[#F4E2D3] pb-3 overflow-x-auto">
         <button
-          onClick={() => setActiveTab("overview")}
+          onClick={() => handleTabChange("overview")}
           className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "overview"
               ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-xs"
@@ -307,7 +539,7 @@ export default function AdminPortalPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab("users")}
+          onClick={() => handleTabChange("users")}
           className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "users"
               ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-xs"
@@ -319,7 +551,7 @@ export default function AdminPortalPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab("invitations")}
+          onClick={() => handleTabChange("invitations")}
           className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "invitations"
               ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-xs"
@@ -331,7 +563,7 @@ export default function AdminPortalPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab("security")}
+          onClick={() => handleTabChange("security")}
           className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "security"
               ? "bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] text-white shadow-xs"
@@ -505,7 +737,7 @@ export default function AdminPortalPage() {
                         <td className="py-3 px-3">
                           {editingUserId === user.id ? (
                             <select
-                              defaultValue={user.role}
+                              value={user.role}
                               onChange={(e) => handleChangeUserRole(user.id, e.target.value)}
                               className="text-xs font-bold text-[#201815] bg-white border border-[#FDBA74] rounded-lg px-2 py-1 outline-none"
                             >
@@ -577,23 +809,166 @@ export default function AdminPortalPage() {
       {/* TAB 3: ROLE INVITATIONS */}
       {activeTab === "invitations" && (
         <div className="space-y-6">
+          {/* SMTP Dispatch Posture Card */}
+          <div className="p-4 rounded-2xl bg-white border border-[#F4E2D3] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                  smtpStatus?.configured
+                    ? "bg-[#EDFDF5] text-[#027A48] border border-[#A6F4C5]"
+                    : "bg-[#FFF2E7] text-[#D95D0D] border border-[#FDBA74]"
+                }`}
+              >
+                <Mail className="w-5 h-5" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-extrabold text-[#201815]">Outgoing Email Delivery (SMTP):</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      smtpStatus?.configured
+                        ? "bg-[#EDFDF5] text-[#027A48] border border-[#A6F4C5]"
+                        : "bg-[#FFF2E7] text-[#D95D0D] border border-[#FDBA74]"
+                    }`}
+                  >
+                    {smtpStatus?.configured ? `🟢 Connected (${smtpStatus.host})` : "🟡 Offline / Console Simulation Mode"}
+                  </span>
+                </div>
+                <p className="text-[11.5px] text-[#7C6A5E]">
+                  {smtpStatus?.configured
+                    ? `Live invitations are transmitted directly via ${smtpStatus.host}:${smtpStatus.port} to client inboxes.`
+                    : "Real SMTP credentials are not configured in backend/.env. Tokens are generated and logged to the server console. Configure SMTP (e.g. Gmail App Password) to deliver live emails directly to inboxes."}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setIsSmtpModalOpen(true);
+                setSmtpTestResult(null);
+              }}
+              className="px-3.5 py-2 rounded-xl border border-[#D95D0D] bg-[#FFF9F3] text-[#D95D0D] hover:bg-[#FFF2E7] text-xs font-bold shrink-0 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors self-start sm:self-center"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Configure / Test SMTP</span>
+            </button>
+          </div>
+
           {/* Newly Generated Invite Banner */}
           {newlyCreatedInvite && (
-            <div className="p-5 rounded-2xl bg-[#EDFDF5] border border-[#A6F4C5] shadow-xs space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#027A48]">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Single-Use Invitation Generated for {newlyCreatedInvite.email} ({newlyCreatedInvite.role}):</span>
+            <div
+              className={`p-5 rounded-2xl border shadow-xs space-y-3.5 ${
+                newlyCreatedInvite.is_live
+                  ? "bg-[#EDFDF5] border-[#A6F4C5]"
+                  : newlyCreatedInvite.delivery_method === "smtp_error"
+                  ? "bg-[#FFF0F0] border-[#FECDCA]"
+                  : "bg-[#FFF9F3] border-[#FDBA74]"
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#201815]">
+                  {newlyCreatedInvite.is_live ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : newlyCreatedInvite.delivery_method === "smtp_error" ? (
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  ) : (
+                    <Info className="w-4 h-4 text-[#D95D0D] shrink-0" />
+                  )}
+                  <span>
+                    Invitation Generated for <strong>{newlyCreatedInvite.email}</strong> ({newlyCreatedInvite.role})
+                  </span>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold ${
+                    newlyCreatedInvite.is_live
+                      ? "bg-emerald-100 text-[#027A48] border border-emerald-200"
+                      : newlyCreatedInvite.delivery_method === "smtp_error"
+                      ? "bg-red-100 text-red-700 border border-red-200"
+                      : "bg-[#FFF2E7] text-[#D95D0D] border border-[#FDBA74]"
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>
+                    {newlyCreatedInvite.is_live
+                      ? "Live Email Dispatched via SMTP"
+                      : newlyCreatedInvite.delivery_method === "smtp_error"
+                      ? "SMTP Delivery Failed"
+                      : "Console Simulation (SMTP Not Configured)"}
+                  </span>
+                </span>
               </div>
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-bold text-[#7C6A5E]">Invitation Acceptance URL:</div>
-                <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-[#A6F4C5] font-mono text-xs text-[#201815]">
-                  <span className="flex-1 truncate select-all">{newlyCreatedInvite.url}</span>
-                  <button
-                    onClick={() => copyToClipboard(newlyCreatedInvite.url, "invite_url")}
-                    className="text-[#027A48] hover:text-[#05603A] text-xs font-bold flex items-center gap-1 cursor-pointer"
+
+              {/* Delivery Explainer Notice */}
+              <div className="text-[12px] text-[#5C4B40] bg-white/80 p-3 rounded-xl border border-black/5 space-y-1">
+                {newlyCreatedInvite.is_live ? (
+                  <p>
+                    An email with the security token and direct activation link was successfully delivered to <strong>{newlyCreatedInvite.email}</strong> via your connected SMTP server.
+                  </p>
+                ) : newlyCreatedInvite.delivery_method === "smtp_error" ? (
+                  <p className="text-red-700">
+                    <strong>SMTP Notice:</strong> Attempted live delivery, but the SMTP server responded: {newlyCreatedInvite.delivery_message}. Click <strong>&quot;Open in Email App&quot;</strong> below to send it to the client with your email client, or recheck your SMTP settings.
+                  </p>
+                ) : (
+                  <p>
+                    <strong>Why did this not arrive in the client&apos;s real inbox?</strong> Outgoing SMTP credentials are not configured in <code className="bg-[#FFF2E7] px-1 py-0.5 rounded font-mono text-[11px] text-[#D95D0D]">backend/.env</code>, so this environment runs in local simulation mode. Click <strong>&quot;Open in Email App&quot;</strong> below to send it immediately via your local email app (Gmail, Apple Mail, Outlook), or configure SMTP above.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div>
+                  <div className="text-[11px] font-bold text-[#7C6A5E] mb-1">Invitation Activation URL:</div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-[#F4E2D3] font-mono text-xs text-[#201815]">
+                    <span className="flex-1 truncate select-all">{newlyCreatedInvite.url}</span>
+                    <button
+                      onClick={() => copyToClipboard(newlyCreatedInvite.url, "invite_url")}
+                      className="text-[#027A48] hover:text-[#05603A] text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {copiedToken === "invite_url" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedToken === "invite_url" ? "Copied" : "Copy Link"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[11px] font-bold text-[#7C6A5E] mb-1">Single-Use Security Token:</div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-[#F4E2D3] font-mono text-xs text-[#201815]">
+                    <span className="flex-1 truncate select-all text-[#D95D0D] font-bold">{newlyCreatedInvite.token}</span>
+                    <button
+                      onClick={() => copyToClipboard(newlyCreatedInvite.token, "invite_token")}
+                      className="text-[#027A48] hover:text-[#05603A] text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {copiedToken === "invite_token" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedToken === "invite_token" ? "Copied" : "Copy Token"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Direct Mail Client Dispatch Action */}
+                <div className="pt-1 flex flex-wrap items-center gap-2">
+                  <a
+                    href={`mailto:${newlyCreatedInvite.email}?subject=${encodeURIComponent(
+                      `You're invited to join ApexDynamics on FIDELIS (${newlyCreatedInvite.role})`
+                    )}&body=${encodeURIComponent(
+                      `Hello,\n\nYou have been invited to join the ApexDynamics workspace on FIDELIS with designated role: ${newlyCreatedInvite.role}.\n\nTo accept your invitation and activate your account, click the link below:\n${newlyCreatedInvite.url}\n\nYour single-use security token:\n${newlyCreatedInvite.token}\n\n--\nFIDELIS Brand Governance Platform`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] hover:from-[#FF9952] hover:to-[#E8630D] text-white text-xs font-extrabold inline-flex items-center gap-1.5 shadow-xs transition-all"
                   >
-                    {copiedToken === "invite_url" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedToken === "invite_url" ? "Copied" : "Copy Link"}</span>
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Open in Email App & Send to Client</span>
+                    <ExternalLink className="w-3 h-3 opacity-80" />
+                  </a>
+
+                  <button
+                    onClick={() => {
+                      setIsSmtpModalOpen(true);
+                      setSmtpTestEmail(newlyCreatedInvite.email);
+                    }}
+                    className="px-3 py-2 rounded-xl border border-[#F4E2D3] bg-white hover:bg-[#FFF9F3] text-xs font-bold text-[#7C6A5E] inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-[#D95D0D]" />
+                    <span>Setup Real SMTP to Deliver Automatically</span>
                   </button>
                 </div>
               </div>
@@ -669,12 +1044,13 @@ export default function AdminPortalPage() {
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Created</th>
                     <th className="py-3 px-3">Expires At</th>
+                    <th className="py-3 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F4E2D3]">
                   {invitations.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-xs text-[#7C6A5E]">
+                      <td colSpan={6} className="py-8 text-center text-xs text-[#7C6A5E]">
                         No invitations created yet. Generate one above to invite a team member.
                       </td>
                     </tr>
@@ -702,6 +1078,19 @@ export default function AdminPortalPage() {
                         </td>
                         <td className="py-3 px-3 text-[#7C6A5E]">{inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "—"}</td>
                         <td className="py-3 px-3 text-[#7C6A5E]">{inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : "—"}</td>
+                        <td className="py-3 px-3 text-right">
+                          {inv.status === "PENDING" && (
+                            <button
+                              onClick={() => handleResendInvitation(inv.id, inv.email)}
+                              disabled={isResendingInvite === inv.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#F4E2D3] hover:bg-[#FFF9F3] text-[#D95D0D] text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                              title="Resend invitation token to recipient's email"
+                            >
+                              <Send className={`w-3 h-3 ${isResendingInvite === inv.id ? "animate-pulse" : ""}`} />
+                              <span>{isResendingInvite === inv.id ? "Sending..." : "Resend Email"}</span>
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -798,6 +1187,251 @@ export default function AdminPortalPage() {
                     Content Creators cannot override blocking flags; Reviewers cannot sign publication releases.
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMTP Configuration & Live Test Modal */}
+      {isSmtpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="w-full max-w-xl bg-white border border-[#F4E2D3] rounded-3xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="p-5 border-b border-[#F4E2D3] flex items-center justify-between bg-[#FFFBF7]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#FFF2E7] text-[#D95D0D] flex items-center justify-center font-bold">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-[#201815]">Outgoing Email Delivery (SMTP)</h3>
+                  <p className="text-[11px] text-[#7C6A5E]">Connect your mail server to automatically deliver invitation links to inboxes</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSmtpModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-[#FFF2E7] text-[#7C6A5E] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5 text-xs">
+              {/* Provider Quick Presets */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-[#7C6A5E] uppercase tracking-wider block">
+                  Quick Provider Presets
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSmtpHostInput("smtp.gmail.com");
+                      setSmtpPortInput(587);
+                      setSmtpTlsInput(true);
+                      if (!smtpFromEmailInput.includes("@gmail.com") && smtpUserInput) {
+                        setSmtpFromEmailInput(smtpUserInput);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-[#F4E2D3] bg-[#FFFBF7] hover:bg-[#FFF2E7] text-[#201815] font-bold text-[11px] cursor-pointer transition-colors"
+                  >
+                    Google / Gmail (smtp.gmail.com)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSmtpHostInput("smtp-relay.brevo.com");
+                      setSmtpPortInput(587);
+                      setSmtpTlsInput(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-[#F4E2D3] bg-[#FFFBF7] hover:bg-[#FFF2E7] text-[#201815] font-bold text-[11px] cursor-pointer transition-colors"
+                  >
+                    Brevo / Sendinblue
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSmtpHostInput("smtp.resend.com");
+                      setSmtpPortInput(587);
+                      setSmtpTlsInput(true);
+                      setSmtpUserInput("resend");
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-[#F4E2D3] bg-[#FFFBF7] hover:bg-[#FFF2E7] text-[#201815] font-bold text-[11px] cursor-pointer transition-colors"
+                  >
+                    Resend SMTP
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions banner */}
+              <div className="p-3.5 rounded-2xl bg-[#FFF9F3] border border-[#FDBA74] text-[11.5px] text-[#5C4B40] space-y-1">
+                <div className="font-bold text-[#D95D0D] flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0" />
+                  <span>Gmail Account Instructions:</span>
+                </div>
+                <p>
+                  Google accounts require an <strong>App Password</strong> (not your standard Google account password).
+                  Go to <span className="font-bold">Google Account &gt; Security &gt; 2-Step Verification &gt; App Passwords</span>, generate a 16-character password, and paste it below.
+                </p>
+              </div>
+
+              {/* Configuration Form */}
+              <form onSubmit={handleSaveSmtp} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      SMTP Host Server
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={smtpHostInput}
+                      onChange={(e) => setSmtpHostInput(e.target.value)}
+                      placeholder="e.g. smtp.gmail.com"
+                      className="editorial-input w-full px-3 py-2 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      SMTP Port (587 or 465)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={smtpPortInput}
+                      onChange={(e) => setSmtpPortInput(Number(e.target.value))}
+                      placeholder="587"
+                      className="editorial-input w-full px-3 py-2 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      SMTP Username / Email
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpUserInput}
+                      onChange={(e) => setSmtpUserInput(e.target.value)}
+                      placeholder="e.g. your_email@gmail.com"
+                      className="editorial-input w-full px-3 py-2 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      SMTP Password / App Password
+                    </label>
+                    <input
+                      type="password"
+                      value={smtpPassInput}
+                      onChange={(e) => setSmtpPassInput(e.target.value)}
+                      placeholder={smtpStatus?.has_password ? "•••••••• (Saved)" : "Enter App Password"}
+                      className="editorial-input w-full px-3 py-2 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      From Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={smtpFromEmailInput}
+                      onChange={(e) => setSmtpFromEmailInput(e.target.value)}
+                      placeholder="e.g. security@yourcompany.com"
+                      className="editorial-input w-full px-3 py-2 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#201815] block mb-1">
+                      From Display Name
+                    </label>
+                    <input
+                      type="text"
+                      value={smtpFromNameInput}
+                      onChange={(e) => setSmtpFromNameInput(e.target.value)}
+                      placeholder="e.g. FIDELIS Platform Security"
+                      className="editorial-input w-full px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="smtp_tls_checkbox"
+                    checked={smtpTlsInput}
+                    onChange={(e) => setSmtpTlsInput(e.target.checked)}
+                    className="accent-[#EA580C] w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="smtp_tls_checkbox" className="text-xs font-bold text-[#201815] cursor-pointer">
+                    Enable TLS / STARTTLS Encryption (Required for Gmail port 587)
+                  </label>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSmtpModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-[#F4E2D3] bg-white hover:bg-[#FFF9F3] text-xs font-bold text-[#7C6A5E] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingSmtp}
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#FF8A3D] to-[#FF721B] hover:from-[#FF9952] hover:to-[#E8630D] text-white text-xs font-extrabold cursor-pointer disabled:opacity-50 transition-all shadow-xs"
+                  >
+                    {isSavingSmtp ? "Saving Settings..." : "Save to backend/.env & Connect"}
+                  </button>
+                </div>
+              </form>
+
+              {/* Diagnostic Test Email Section */}
+              <div className="pt-3 border-t border-[#F4E2D3] space-y-2.5">
+                <label className="text-[11px] font-bold text-[#201815] block">
+                  Verify Outgoing Delivery (Send Live Test Email)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={smtpTestEmail}
+                    onChange={(e) => setSmtpTestEmail(e.target.value)}
+                    placeholder="Enter email to test (e.g. alfredbiju34@gmail.com)"
+                    className="editorial-input flex-1 px-3 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestSmtp}
+                    disabled={isTestingSmtp}
+                    className="px-4 py-2 rounded-xl bg-[#FFF2E7] hover:bg-[#FFE5D0] text-[#D95D0D] border border-[#FDBA74] text-xs font-extrabold cursor-pointer disabled:opacity-50 shrink-0 flex items-center gap-1.5 transition-colors"
+                  >
+                    <Send className={`w-3.5 h-3.5 ${isTestingSmtp ? "animate-spin" : ""}`} />
+                    <span>{isTestingSmtp ? "Testing..." : "Send Test Email"}</span>
+                  </button>
+                </div>
+
+                {smtpTestResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs font-bold space-y-1 ${
+                      smtpTestResult.success
+                        ? "bg-[#EDFDF5] border-[#A6F4C5] text-[#027A48]"
+                        : "bg-[#FFF0F0] border-[#FECDCA] text-[#B42318]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {smtpTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                      <span>{smtpTestResult.success ? "Success" : "Delivery Error"}</span>
+                    </div>
+                    <p className="font-normal font-mono text-[11px] break-all">{smtpTestResult.message}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
