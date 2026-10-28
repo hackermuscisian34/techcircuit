@@ -12,6 +12,9 @@ license: mit
 
 # FIDELIS: Brand Governance Compiler & Verification Platform
 
+**Live Production Deployment**: [https://techcircuit-alpha.vercel.app](https://techcircuit-alpha.vercel.app)  
+**Product Roadmap & Future Development Plan**: [PRODUCT_ROADMAP_AND_FUTURE_DEVELOPMENT_PLAN.md](PRODUCT_ROADMAP_AND_FUTURE_DEVELOPMENT_PLAN.md)
+
 FIDELIS is an open-source, deterministic brand governance compiler and content verification platform. It compiles static brand guidelines, product taxonomy specs, and trademark rules into an executable, testable rulebook—evaluating marketing copy, packaging, and digital assets against verified evidence.
 
 ---

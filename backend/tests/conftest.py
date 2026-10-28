@@ -1,4 +1,7 @@
 import os
+os.environ["ENVIRONMENT"] = "test"
+os.environ["SMTP_HOST"] = ""
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -6,6 +9,10 @@ from sqlalchemy.pool import StaticPool
 from app.db.session import Base
 from app.seed.synthetic_brand import seed_database, WORKSPACE_ID
 from app.db.models import Workspace, User, Rulebook, Rule, Fact
+from app.config import settings
+
+settings.SMTP_HOST = None
+
 TEST_DB_URL = 'sqlite:///:memory:'
 
 @pytest.fixture(scope='function')
